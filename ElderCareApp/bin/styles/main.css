@@ -1,0 +1,13 @@
+.label {
+    -fx-font-family: "Arial";
+}
+
+.button {
+    -fx-background-color: #4CAF50;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.text-field, .password-field {
+    -fx-pref-width: 200px;
+}
