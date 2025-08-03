@@ -1,1 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
 
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.layout.Priority?>
+
+<AnchorPane xmlns:fx="http://javafx.com/fxml"
+            fx:controller="controller.RegistrationController"
+            prefWidth="480" prefHeight="580"
+            stylesheets="@../styles/main.css">
+
+    <VBox spacing="15" alignment="CENTER"
+          AnchorPane.topAnchor="20" AnchorPane.bottomAnchor="20"
+          AnchorPane.leftAnchor="20" AnchorPane.rightAnchor="20"
+          styleClass="container">
+
+        <Label text="User Registration" styleClass="title"/>
+
+        <TextField fx:id="nameField" promptText="Full Name" maxWidth="300"/>
+
+        <TextField fx:id="usernameField" promptText="Username" maxWidth="300"/>
+
+        <ComboBox fx:id="roleComboBox" promptText="Select Role" maxWidth="300"/>
+
+        <HBox fx:id="emailBox" alignment="CENTER">
+            <TextField fx:id="emailField" promptText="Email (Caretaker only)" maxWidth="300" HBox.hgrow="ALWAYS"/>
+        </HBox>
+
+        <PasswordField fx:id="passwordField" promptText="Password" maxWidth="300"/>
+
+        <HBox fx:id="pairingCodeBox" alignment="CENTER">
+            <TextField fx:id="pairingCodeField" promptText="Pairing Code (Caretaker only)" maxWidth="300" HBox.hgrow="ALWAYS"/>
+        </HBox>
+
+        <Button fx:id="registerButton" text="Register" styleClass="btn-primary" maxWidth="200"/>
+
+        <Label fx:id="errorLabel" textFill="red"/>
+    </VBox>
+</AnchorPane>
