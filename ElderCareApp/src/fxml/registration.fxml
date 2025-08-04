@@ -33,7 +33,8 @@
             <TextField fx:id="pairingCodeField" promptText="Pairing Code (Caretaker only)" maxWidth="300" HBox.hgrow="ALWAYS"/>
         </HBox>
 
-        <Button fx:id="registerButton" text="Register" styleClass="btn-primary" maxWidth="200"/>
+        <!-- ✅ This line added to call handleRegistration() -->
+        <Button fx:id="registerButton" text="Register" styleClass="btn-primary" maxWidth="200" onAction="#handleRegistration"/>
 
         <Label fx:id="errorLabel" textFill="red"/>
     </VBox>
