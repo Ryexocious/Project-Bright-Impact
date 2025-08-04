@@ -28,5 +28,6 @@ public class PostRegistrationController {
 	        pairedElderNameLabel.setText(pairingCodeOrElderName);
 	    }
 	}
+	// dashboard button code add kra laghbe 
 
 }
