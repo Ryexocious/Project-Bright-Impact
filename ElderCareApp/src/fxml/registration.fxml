@@ -33,9 +33,9 @@
             <TextField fx:id="pairingCodeField" promptText="Pairing Code (Caretaker only)" maxWidth="300" HBox.hgrow="ALWAYS"/>
         </HBox>
 
-        <!-- ✅ This line added to call handleRegistration() -->
         <Button fx:id="registerButton" text="Register" styleClass="btn-primary" maxWidth="200" onAction="#handleRegistration"/>
 
-        <Label fx:id="errorLabel" textFill="red"/>
+        <!-- Fixed fx:id to match controller -->
+        <Label fx:id="messageLabel" textFill="red"/>
     </VBox>
 </AnchorPane>
