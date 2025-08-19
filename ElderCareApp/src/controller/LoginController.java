@@ -1,16 +1,24 @@
 package controller;
 
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.*;
+import javafx.animation.FadeTransition;
+import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
-import javafx.scene.control.*;
-import javafx.scene.layout.Pane;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.TextField;
 import javafx.stage.Stage;
-import javafx.animation.FadeTransition;
 import javafx.util.Duration;
+import utils.FirestoreService;
 
 import java.io.IOException;
-import java.net.URL;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 public class LoginController {
 
@@ -21,12 +29,14 @@ public class LoginController {
 
     @FXML
     public void initialize() {
+        roleChoiceBox.getItems().clear();
         roleChoiceBox.getItems().addAll("Elder", "Caretaker");
+        roleChoiceBox.setValue("Elder"); // Default selection
     }
 
     @FXML
     private void handleLogin() {
-        String username = usernameField.getText();
+        String username = usernameField.getText().trim();
         String password = passwordField.getText();
         String role = roleChoiceBox.getValue();
 
@@ -35,24 +45,58 @@ public class LoginController {
             return;
         }
 
-        // Simulate login
-        messageLabel.setText("Login successful!");
+        Firestore db = FirestoreService.getFirestore();
+        CollectionReference usersRef = db.collection("users");
 
-        // TODO: Navigate to dashboard or main app screen here
-        // e.g., loadDashboard();
+        ApiFuture<QuerySnapshot> future = usersRef
+                .whereEqualTo("username", username)
+                .whereEqualTo("password", password)
+                .whereEqualTo("role", role.toLowerCase())
+                .get();
+
+        new Thread(() -> {
+            try {
+                List<QueryDocumentSnapshot> users = future.get().getDocuments();
+                if (users.isEmpty()) {
+                    Platform.runLater(() -> messageLabel.setText("Invalid credentials or role."));
+                } else {
+                    DocumentReference userDoc = users.get(0).getReference();
+                    userDoc.update("loggedIn", true, "lastLogin", System.currentTimeMillis());
+
+                    Platform.runLater(() -> {
+                        messageLabel.setText("Login successful!");
+                        if (role.equalsIgnoreCase("Elder")) {
+                            // pass the username to the elder dashboard so it can load details
+                            switchSceneWithFade("elder_dashboard.fxml", username);
+                        } else {
+                            // caretaker doesn't need the username passed
+                            switchSceneWithFade("caretaker_dashboard.fxml");
+                        }
+                    });
+                }
+            } catch (InterruptedException | ExecutionException e) {
+                Platform.runLater(() -> messageLabel.setText("Login failed: " + e.getMessage()));
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     @FXML
     private void handleRegistration() {
-        try {
-            URL resourceUrl = getClass().getResource("/fxml/Registration.fxml");
-            if (resourceUrl == null) {
-                messageLabel.setText("Could not find registration page.");
-                return;
-            }
+        switchSceneWithFade("registration.fxml");
+    }
 
-            FXMLLoader loader = new FXMLLoader(resourceUrl);
-            Pane root = loader.load();
+    // Overload used when we need to pass the logged-in username to the next controller
+    private void switchSceneWithFade(String fxmlFile, String loggedInUsername) {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/" + fxmlFile));
+            Parent root = loader.load();
+
+            // If the loaded controller is ElderDashboardController, call initializeElder
+            Object controller = loader.getController();
+            if (controller instanceof ElderDashboardController) {
+                ((ElderDashboardController) controller).initializeElder(loggedInUsername);
+            }
 
             Stage stage = (Stage) usernameField.getScene().getWindow();
             Scene scene = new Scene(root);
@@ -63,10 +107,32 @@ public class LoginController {
             ft.play();
 
             stage.setScene(scene);
-
+            stage.centerOnScreen();
         } catch (IOException e) {
             e.printStackTrace();
-            messageLabel.setText("Failed to load registration page.");
+            messageLabel.setText("Failed to load scene: " + fxmlFile);
+        }
+    }
+
+    // Existing overload for calls that don't need to pass username
+    private void switchSceneWithFade(String fxmlFile) {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/" + fxmlFile));
+            Parent root = loader.load();
+
+            Stage stage = (Stage) usernameField.getScene().getWindow();
+            Scene scene = new Scene(root);
+
+            FadeTransition ft = new FadeTransition(Duration.millis(400), root);
+            ft.setFromValue(0);
+            ft.setToValue(1);
+            ft.play();
+
+            stage.setScene(scene);
+            stage.centerOnScreen();
+        } catch (IOException e) {
+            e.printStackTrace();
+            messageLabel.setText("Failed to load scene: " + fxmlFile);
         }
     }
 }

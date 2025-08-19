@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<AnchorPane xmlns:fx="http://javafx.com/fxml" fx:controller="controller.PostRegistrationController"
+            prefWidth="500" prefHeight="400" stylesheets="@../styles/main.css">
+    <children>
+        <VBox spacing="20" alignment="CENTER"
+              AnchorPane.topAnchor="0" AnchorPane.bottomAnchor="0"
+              AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0"
+              styleClass="container">
+
+            <Label text="🎉 Registration Successful!" styleClass="title"/>
+
+
+            <VBox fx:id="elderSection" spacing="10" alignment="CENTER">
+                <Label text="Your Pairing Code:" styleClass="subtitle"/>
+                <TextField fx:id="pairingCodeField" editable="false" styleClass="pairing-code"/>
+                <Button text="Copy Code" fx:id="copyButton" styleClass="btn-primary" maxWidth="150"/>
+                <Label text="Share this code with your caretaker so they can connect with you."
+                       wrapText="true" maxWidth="400" styleClass="info-text"/>
+            </VBox>
+
+            <VBox fx:id="caretakerSection" spacing="10" alignment="CENTER" visible="false" managed="false">
+                <Label text="You are successfully paired with:" styleClass="subtitle"/>
+                <Label fx:id="pairedElderNameLabel" text="Elder Name" styleClass="info-text"/>
+            </VBox>
+
+            <Button text="Go to Dashboard" fx:id="dashboardButton" styleClass="btn-secondary" maxWidth="200"/>
+        </VBox>
+    </children>
+</AnchorPane>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox spacing="20" alignment="CENTER" xmlns="http://javafx.com/javafx/23.0.1"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.ElderDashboardController">
+
+    <padding>
+        <Insets top="30" right="30" bottom="30" left="30"/>
+    </padding>
+
+    <!-- Dynamic welcome label -->
+    <Label fx:id="welcomeLabel" text="Welcome, ..." 
+           style="-fx-font-size: 24px; -fx-font-weight: bold;" />
+
+    <Button fx:id="helpRequestButton" text="🆘 Request Help"
+            onAction="#handleHelpRequest"
+            style="-fx-font-size: 16px; -fx-background-color: #e74c3c; -fx-text-fill: white;"/>
+
+    <Button fx:id="viewMedicineButton" text="💊 View Medicine Schedule"
+            onAction="#handleViewMedicine"
+            style="-fx-font-size: 16px;"/>
+
+    <Button fx:id="viewVitalsButton" text="❤️ View Vitals"
+            onAction="#handleViewVitals"
+            style="-fx-font-size: 16px;"/>
+
+    <Button fx:id="logoutButton" text="🚪 Logout"
+            onAction="#handleLogout"
+            style="-fx-font-size: 16px; -fx-background-color: #bdc3c7;"/>
+</VBox>
