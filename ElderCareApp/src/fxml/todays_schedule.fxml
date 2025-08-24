@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="controller.TodaysScheduleController"
+            style="-fx-background-color: #f5f7fb;"
+            prefWidth="960"
+            prefHeight="500">
+
+    <!-- Top bar -->
+    <top>
+        <HBox alignment="CENTER_LEFT" spacing="8"
+              style="-fx-padding:12; -fx-background-color:#ffffff; -fx-border-color:#e5e7eb; -fx-border-width:0 0 1 0;">
+            <Label text="Medicine Schedule"
+                   style="-fx-font-size:16; -fx-font-weight:600; -fx-text-fill:#111827;"/>
+        </HBox>
+    </top>
+
+    <!-- Scrollable schedule container -->
+    <center>
+        <ScrollPane fitToWidth="true"
+                    hbarPolicy="NEVER"
+                    vbarPolicy="AS_NEEDED"
+                    style="-fx-background-color:transparent;"
+                    prefHeight="420">
+            <content>
+                <VBox fx:id="scheduleContainer"
+                      alignment="TOP_CENTER"
+                      spacing="10"
+                      style="-fx-padding:16;"
+                      maxWidth="900">
+                    <!-- Date label + dose cards + custom day button will be added dynamically -->
+                </VBox>
+            </content>
+        </ScrollPane>
+    </center>
+
+    <!-- Bottom bar -->
+    <bottom>
+        <HBox alignment="CENTER_LEFT" spacing="12"
+              style="-fx-padding:12; -fx-background-color:#ffffff; -fx-border-color:#e5e7eb; -fx-border-width:1 0 0 0;">
+            <Label fx:id="elderFoundLabel"
+                   text="Detecting linked elder..."
+                   style="-fx-font-size:14; -fx-font-weight:500; -fx-text-fill:#374151;"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <!-- Back button aligned right -->
+            <Button fx:id="backButton"
+                    text="Back"
+                    style="-fx-background-color:#1a73e8; -fx-text-fill:white; -fx-font-size:13; -fx-background-radius:6; -fx-padding:6 16;"
+                    mnemonicParsing="false"/>
+        </HBox>
+    </bottom>
+
+</BorderPane>

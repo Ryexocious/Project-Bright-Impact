@@ -1,11 +1,10 @@
-/* Elder Dashboard CSS - Optimized for Single Screen View */
+/* Elder Dashboard CSS - JavaFX-compatible and cleaned */
 
-/* Main Container - Fixed height to prevent scrolling */
+/* Main Container */
 .main-container {
     -fx-background-color: #f8f9fa;
-    -fx-max-height: 100vh;
-    -fx-min-height: 100vh;
-    -fx-pref-height: 100vh;
+    /* Use a reasonable default height (JavaFX doesn't support 100vh) */
+    -fx-pref-height: 800;
 }
 
 /* Compact Welcome Section */
@@ -13,8 +12,8 @@
     -fx-background-color: white;
     -fx-background-radius: 12;
     -fx-padding: 15;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 3);
-    -fx-min-width: 400px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 8, 0, 0, 3);
+    -fx-min-width: 400;
 }
 
 .welcome-text-compact {
@@ -40,14 +39,14 @@
     -fx-background-color: white;
     -fx-background-radius: 12;
     -fx-padding: 15;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 3);
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 8, 0, 0, 3);
 }
 
 .summary-card-compact {
     -fx-background-color: #f8f9fa;
     -fx-background-radius: 10;
     -fx-padding: 12;
-    -fx-min-width: 70px;
+    -fx-min-width: 70;
     -fx-border-color: #dee2e6;
     -fx-border-radius: 10;
     -fx-border-width: 1;
@@ -85,7 +84,7 @@
     -fx-background-color: #e74c3c;
     -fx-background-radius: 10;
     -fx-padding: 15;
-    -fx-effect: dropshadow(gaussian, rgba(231, 76, 60, 0.3), 10, 0, 0, 3);
+    -fx-effect: dropshadow(gaussian, rgba(231,76,60,0.30), 10, 0, 0, 3);
 }
 
 .alert-title-compact {
@@ -112,17 +111,9 @@
     -fx-text-fill: white;
 }
 
-.alert-take-button:hover {
-    -fx-background-color: #2ecc71;
-}
-
 .alert-snooze-button {
     -fx-background-color: #f39c12;
     -fx-text-fill: white;
-}
-
-.alert-snooze-button:hover {
-    -fx-background-color: #e67e22;
 }
 
 /* Compact Upcoming Medicines Section */
@@ -130,8 +121,8 @@
     -fx-background-color: white;
     -fx-background-radius: 12;
     -fx-padding: 20;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 3);
-    -fx-min-width: 450px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 8, 0, 0, 3);
+    -fx-min-width: 450;
 }
 
 .section-title-compact {
@@ -149,12 +140,8 @@
     -fx-padding: 6 12 6 12;
 }
 
-.view-button-compact:hover {
-    -fx-background-color: #2980b9;
-}
-
 .upcoming-medicines-flow-compact {
-    -fx-max-height: 300px;
+    -fx-max-height: 300;
 }
 
 /* Time-Based Medicine Groups */
@@ -168,11 +155,6 @@
     -fx-border-width: 1;
 }
 
-.medicine-time-group:hover {
-    -fx-background-color: #d5dbdb;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 8, 0, 0, 3);
-}
-
 .time-group-header {
     -fx-alignment: CENTER_LEFT;
 }
@@ -181,7 +163,7 @@
     -fx-background-color: white;
     -fx-background-radius: 8;
     -fx-padding: 12;
-    -fx-min-width: 120px;
+    -fx-min-width: 120;
     -fx-border-color: #3498db;
     -fx-border-radius: 8;
     -fx-border-width: 2;
@@ -234,44 +216,40 @@
     -fx-text-fill: #27ae60;
 }
 
-/* Actions Section */
+/* Actions Section (right column) */
 .actions-section {
-    -fx-min-width: 250px;
-    -fx-max-width: 280px;
+    -fx-min-width: 450;
+    -fx-max-width: 480;
 }
 
-/* Compact Navigation Section */
+/* Compact Navigation Section (used as card for the timer) */
 .navigation-section-compact {
     -fx-background-color: white;
     -fx-background-radius: 12;
     -fx-padding: 20;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 3);
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 8, 0, 0, 3);
 }
 
+/* Navigation title */
 .nav-title-compact {
     -fx-font-size: 16px;
     -fx-font-weight: bold;
     -fx-text-fill: #495057;
 }
 
+/* Buttons in navigation area (kept generic) */
 .nav-button-primary-compact {
     -fx-background-color: #007bff;
     -fx-text-fill: white;
     -fx-font-size: 12px;
     -fx-font-weight: bold;
     -fx-background-radius: 10;
-    -fx-text-alignment: center;
-    -fx-min-width: 90px;
-    -fx-min-height: 60px;
+    -fx-min-width: 90;
+    -fx-min-height: 60;
     -fx-padding: 8;
 }
 
-.nav-button-primary-compact:hover {
-    -fx-background-color: #0056b3;
-    -fx-effect: dropshadow(gaussian, rgba(0,123,255,0.3), 8, 0, 0, 2);
-}
-
-/* Compact Help Section */
+/* Compact Help (emergency) */
 .help-section-compact {
     -fx-background-color: #fff3cd;
     -fx-background-radius: 12;
@@ -287,17 +265,12 @@
     -fx-font-size: 16px;
     -fx-font-weight: bold;
     -fx-background-radius: 10;
-    -fx-effect: dropshadow(gaussian, rgba(220,53,69,0.3), 10, 0, 0, 3);
-    -fx-min-width: 200px;
+    -fx-effect: dropshadow(gaussian, rgba(220,53,69,0.30), 10, 0, 0, 3);
+    -fx-min-width: 200;
     -fx-padding: 12;
 }
 
-.emergency-button-compact:hover {
-    -fx-background-color: #c82333;
-    -fx-effect: dropshadow(gaussian, rgba(220,53,69,0.5), 15, 0, 0, 5);
-}
-
-/* Compact Logout Section */
+/* Bottom logout section */
 .logout-section-compact {
     -fx-background-color: #f8f9fa;
     -fx-background-radius: 8;
@@ -315,10 +288,6 @@
     -fx-padding: 8 20 8 20;
 }
 
-.logout-button-compact:hover {
-    -fx-background-color: #545b62;
-}
-
 /* Urgent countdown styling for groups */
 .countdown-urgent .group-countdown-text {
     -fx-text-fill: #e74c3c;
@@ -334,39 +303,20 @@
 
 /* Animation classes for dynamic updates */
 .medicine-group-new {
-    -fx-effect: dropshadow(gaussian, rgba(46,204,113,0.4), 10, 0, 0, 3);
+    -fx-effect: dropshadow(gaussian, rgba(46,204,113,0.40), 10, 0, 0, 3);
     -fx-border-color: #2ecc71;
 }
 
 .medicine-group-due {
-    -fx-effect: dropshadow(gaussian, rgba(231,76,60,0.4), 10, 0, 0, 3);
+    -fx-effect: dropshadow(gaussian, rgba(231,76,60,0.40), 10, 0, 0, 3);
     -fx-border-color: #e74c3c;
 }
 
-/* High contrast mode for better visibility */
+/* High contrast tweaks */
 .high-contrast .medicine-time-group {
     -fx-border-width: 2;
 }
 
 .high-contrast .summary-value-compact {
     -fx-font-size: 28px;
-}
-
-/* Responsive adjustments for smaller screens */
-@media screen and (max-height: 800px) {
-    .main-container {
-        -fx-padding: 6;
-    }
-
-    .welcome-section-compact,
-    .summary-section-compact,
-    .upcoming-medicines-section-compact,
-    .navigation-section-compact,
-    .help-section-compact {
-        -fx-padding: 12;
-    }
-
-    .upcoming-medicine-card-compact {
-        -fx-padding: 8;
-    }
 }

@@ -8,11 +8,29 @@ import javafx.stage.Stage;
 
 import java.io.IOException;
 
+/**
+ * Updated Caretaker dashboard: updated navigation buttons
+ */
 public class CaretakerDashboardController {
 
     @FXML
-    private void handleMissedDoses() {
-        switchScene("/fxml/missed_doses.fxml");
+    private void handleCreateMedicineSchedule() {
+        switchScene("/fxml/medicine_schedule.fxml");
+    }
+
+    @FXML
+    private void handleTodaysSchedule() {
+        switchScene("/fxml/todays_schedule.fxml");
+    }
+
+    @FXML
+    private void handleMedicineHistory() {
+        switchScene("/fxml/medicine_history.fxml");
+    }
+
+    @FXML
+    private void handleEditCurrentDoses() {
+        switchScene("/fxml/edit_medicine_doses.fxml");
     }
 
     @FXML
@@ -30,6 +48,7 @@ public class CaretakerDashboardController {
             Parent root = FXMLLoader.load(getClass().getResource(fxmlPath));
             Stage stage = (Stage) Stage.getWindows().filtered(window -> window.isShowing()).get(0);
             stage.setScene(new Scene(root));
+            stage.centerOnScreen();
         } catch (IOException e) {
             e.printStackTrace();
         }
