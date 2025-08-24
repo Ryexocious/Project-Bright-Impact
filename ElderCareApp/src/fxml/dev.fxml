@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.GridPane?>
+
+<VBox spacing="8" alignment="TOP_CENTER" styleClass="main-container"
+      xmlns="http://javafx.com/javafx/23.0.1"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.ElderDashboardController"
+      stylesheets="@../styles/elderdash.css">
+
+    <padding>
+        <Insets top="8" right="12" bottom="8" left="12"/>
+    </padding>
+
+    <!-- Top Row: Welcome + Current Status -->
+    <HBox spacing="12" VBox.vgrow="NEVER">
+        <!-- Welcome Section - Compact -->
+        <VBox spacing="3" alignment="CENTER" styleClass="welcome-section-compact" HBox.hgrow="ALWAYS">
+            <Label fx:id="welcomeLabel" text="Welcome, ..." styleClass="welcome-text-compact"/>
+            <HBox spacing="15" alignment="CENTER">
+                <Label fx:id="currentDateLabel" text="Monday, January 15, 2024"
+                       styleClass="current-date-compact"/>
+                <Label fx:id="currentTimeLabel" text="2:30:45 PM"
+                       styleClass="current-time-compact"/>
+            </HBox>
+        </VBox>
+
+        <!-- Today's Summary - Compact -->
+        <HBox spacing="8" alignment="CENTER" styleClass="summary-section-compact" HBox.hgrow="NEVER">
+            <VBox spacing="1" alignment="CENTER" styleClass="summary-card-compact">
+                <Label text="Completed" styleClass="summary-label-compact"/>
+                <Label fx:id="medicinesTakenCount" text="3" styleClass="summary-value-compact"/>
+                <Label text="medicines taken" styleClass="summary-detail-compact"/>
+            </VBox>
+            <VBox spacing="1" alignment="CENTER" styleClass="summary-card-compact">
+                <Label text="Remaining" styleClass="summary-label-compact"/>
+                <Label fx:id="medicinesRemainingCount" text="2" styleClass="summary-value-compact"/>
+                <Label text="medicines left" styleClass="summary-detail-compact"/>
+            </VBox>
+            <VBox spacing="1" alignment="CENTER" styleClass="summary-card-compact">
+                <Label text="Next Dose" styleClass="summary-label-compact"/>
+                <Label fx:id="nextDoseTime" text="4:45 PM" styleClass="summary-value-time-compact"/>
+                <Label fx:id="nextDoseName" text="Aspirin" styleClass="summary-detail-compact"/>
+            </VBox>
+        </HBox>
+    </HBox>
+
+    <!-- Medicine Alert Banner - Only when needed -->
+    <VBox spacing="5" alignment="CENTER" fx:id="medicineAlertBanner" visible="false" managed="false"
+          styleClass="medicine-alert-banner-compact" VBox.vgrow="NEVER">
+        <Label text="TIME FOR MEDICINE!" styleClass="alert-title-compact"/>
+        <Label fx:id="alertMedicineText" text="It's time to take your Aspirin 100mg"
+               styleClass="alert-message-compact"/>
+        <HBox spacing="10" alignment="CENTER">
+            <Button fx:id="takeMedicineButton" text="Take Medicine Now"
+                    onAction="#handleTakeMedicine"
+                    styleClass="alert-take-button"/>
+            <Button fx:id="snoozeButton" text="Remind Me Later"
+                    onAction="#handleSnoozeMedicine"
+                    styleClass="alert-snooze-button"/>
+        </HBox>
+    </VBox>
+
+    <!-- Main Content Row -->
+    <HBox spacing="12" VBox.vgrow="ALWAYS">
+        <!-- Left: Upcoming Medicines -->
+        <VBox spacing="8" styleClass="upcoming-medicines-section-compact" HBox.hgrow="ALWAYS">
+            <HBox spacing="5" alignment="CENTER_LEFT">
+                <Label text="Upcoming Medicines" styleClass="section-title-compact"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Button fx:id="viewAllMedicineButton" text="View All Medicines"
+                        onAction="#handleViewMedicine"
+                        styleClass="view-button-compact"/>
+            </HBox>
+
+            <!-- Time-Based Medicine Groups -->
+            <VBox fx:id="upcomingMedicinesContainer" spacing="8" styleClass="upcoming-medicines-flow-compact"
+                  VBox.vgrow="ALWAYS">
+                <!-- Sample medicine group -->
+                <VBox spacing="5" alignment="CENTER_LEFT" styleClass="medicine-time-group">
+                    <HBox spacing="8" alignment="CENTER_LEFT" styleClass="time-group-header">
+                        <VBox spacing="1" alignment="CENTER" styleClass="time-display">
+                            <Label text="In 30 minutes" styleClass="group-countdown-text"/>
+                            <Label text="at 4:45 PM" styleClass="group-scheduled-time"/>
+                        </VBox>
+                        <VBox spacing="1" alignment="CENTER_LEFT" styleClass="medicines-in-group">
+                            <Label text="Take 3 medicines:" styleClass="medicine-count-text"/>
+                            <Label text="Aspirin 100mg, Vitamin D 1000IU, Lisinopril 10mg"
+                                   styleClass="medicine-names-text"/>
+                        </VBox>
+                    </HBox>
+                </VBox>
+
+                <!-- Another sample group -->
+                <VBox spacing="5" alignment="CENTER_LEFT" styleClass="medicine-time-group">
+                    <HBox spacing="8" alignment="CENTER_LEFT" styleClass="time-group-header">
+                        <VBox spacing="1" alignment="CENTER" styleClass="time-display">
+                            <Label text="In 4 hours" styleClass="group-countdown-text"/>
+                            <Label text="at 8:30 PM" styleClass="group-scheduled-time"/>
+                        </VBox>
+                        <VBox spacing="1" alignment="CENTER_LEFT" styleClass="medicines-in-group">
+                            <Label text="Take 1 medicine:" styleClass="medicine-count-text"/>
+                            <Label text="Metformin 500mg" styleClass="medicine-names-text"/>
+                        </VBox>
+                    </HBox>
+                </VBox>
+            </VBox>
+
+            <!-- No medicines message -->
+            <VBox spacing="5" alignment="CENTER" fx:id="noUpcomingMedicinesCard" visible="false" managed="false"
+                  styleClass="no-medicines-card-compact">
+                <Label text="No upcoming medicines scheduled" styleClass="no-medicines-text-compact"/>
+            </VBox>
+        </VBox>
+
+        <!-- Right: Actions & Emergency -->
+        <VBox spacing="10" styleClass="actions-section" HBox.hgrow="NEVER">
+            <!-- Quick Actions -->
+            <VBox spacing="8" alignment="CENTER" styleClass="navigation-section-compact">
+                <Label text="Quick Actions" styleClass="nav-title-compact"/>
+                <GridPane hgap="8" vgap="8" alignment="CENTER">
+                    <Button fx:id="addMedicineButton" text="Add New&#10;Medicine"
+                            onAction="#handleAddMedicine"
+                            styleClass="nav-button-primary-compact"
+                            GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                    <Button fx:id="medicineHistoryButton" text="View Medicine&#10;History"
+                            onAction="#handleMedicineHistory"
+                            styleClass="nav-button-primary-compact"
+                            GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                    <Button fx:id="profileButton" text="My Profile&#10;Settings"
+                            onAction="#handleProfile"
+                            styleClass="nav-button-primary-compact"
+                            GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                    <Button fx:id="settingsButton" text="App&#10;Settings"
+                            onAction="#handleSettings"
+                            styleClass="nav-button-primary-compact"
+                            GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                </GridPane>
+            </VBox>
+
+            <!-- Emergency Help -->
+            <VBox spacing="5" alignment="CENTER" styleClass="help-section-compact">
+                <Button fx:id="helpRequestButton" text="EMERGENCY HELP"
+                        onAction="#handleHelpRequest"
+                        styleClass="emergency-button-compact"/>
+            </VBox>
+        </VBox>
+    </HBox>
+
+    <!-- Bottom Row: Sign Out -->
+    <HBox spacing="5" alignment="CENTER" styleClass="logout-section-compact" VBox.vgrow="NEVER">
+        <Button fx:id="logoutButton" text="Sign Out"
+                onAction="#handleLogout"
+                styleClass="logout-button-compact"/>
+    </HBox>
+
+</VBox>
