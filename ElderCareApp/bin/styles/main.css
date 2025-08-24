@@ -1,7 +1,6 @@
 .label {
     -fx-font-family: "Arial";
 }
-
 .button {
     -fx-background-color: #4CAF50;
     -fx-text-fill: white;
@@ -10,4 +9,70 @@
 
 .text-field, .password-field {
     -fx-pref-width: 200px;
+}
+/* Container styling */
+.container {
+    -fx-padding: 30;
+    -fx-spacing: 15;
+    -fx-background-color: linear-gradient(to bottom right, #f1f3f5, #e9ecef);
+    -fx-border-color: #ced4da;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-effect: dropshadow(one-pass-box, rgba(0,0,0,0.1), 10, 0, 0, 4);
+    -fx-font-family: "Segoe UI", "Arial", sans-serif;
+}
+
+/* Title Label */
+.title {
+    -fx-font-size: 28px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #212529;
+    -fx-padding: 10 0 20 0;
+}
+
+/* Buttons */
+.btn-primary {
+    -fx-background-color: #007bff;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-padding: 10 20;
+    -fx-cursor: hand;
+    -fx-transition: background-color 0.3s ease-in-out;
+}
+
+.btn-primary:hover {
+    -fx-background-color: #0056b3;
+}
+
+.btn-secondary {
+    -fx-background-color: #6c757d;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-padding: 10 20;
+    -fx-cursor: hand;
+    -fx-transition: background-color 0.3s ease-in-out;
+}
+
+.btn-secondary:hover {
+    -fx-background-color: #5a6268;
+}
+
+/* Input controls: TextField, PasswordField, ComboBox */
+.text-field, .password-field, .combo-box {
+    -fx-pref-width: 260px;
+    -fx-font-size: 14px;
+    -fx-padding: 8 12;
+    -fx-background-radius: 6;
+    -fx-border-color: #ced4da;
+    -fx-border-radius: 6;
+    -fx-background-color: white;
+}
+
+/* Error message label */
+.error-label {
+    -fx-text-fill: red;
+    -fx-font-size: 13px;
+    -fx-padding: 5 0 0 0;
 }

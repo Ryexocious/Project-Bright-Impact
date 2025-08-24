@@ -1,0 +1,372 @@
+/* Elder Dashboard CSS - Optimized for Single Screen View */
+
+/* Main Container - Fixed height to prevent scrolling */
+.main-container {
+    -fx-background-color: #f8f9fa;
+    -fx-max-height: 100vh;
+    -fx-min-height: 100vh;
+    -fx-pref-height: 100vh;
+}
+
+/* Compact Welcome Section */
+.welcome-section-compact {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-padding: 15;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 3);
+    -fx-min-width: 400px;
+}
+
+.welcome-text-compact {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2c3e50;
+}
+
+.current-date-compact {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #34495e;
+}
+
+.current-time-compact {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #3498db;
+}
+
+/* Compact Summary Section */
+.summary-section-compact {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-padding: 15;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 3);
+}
+
+.summary-card-compact {
+    -fx-background-color: #f8f9fa;
+    -fx-background-radius: 10;
+    -fx-padding: 12;
+    -fx-min-width: 70px;
+    -fx-border-color: #dee2e6;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+}
+
+.summary-icon {
+    -fx-font-size: 16px;
+}
+
+.summary-label-compact {
+    -fx-font-size: 12px;
+    -fx-text-fill: #6c757d;
+    -fx-font-weight: bold;
+}
+
+.summary-value-compact {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #28a745;
+}
+
+.summary-value-time-compact {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #007bff;
+}
+
+.summary-detail-compact {
+    -fx-font-size: 11px;
+    -fx-text-fill: #6c757d;
+}
+
+/* Compact Medicine Alert Banner */
+.medicine-alert-banner-compact {
+    -fx-background-color: #e74c3c;
+    -fx-background-radius: 10;
+    -fx-padding: 15;
+    -fx-effect: dropshadow(gaussian, rgba(231, 76, 60, 0.3), 10, 0, 0, 3);
+}
+
+.alert-title-compact {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.alert-message-compact {
+    -fx-font-size: 16px;
+    -fx-text-fill: white;
+}
+
+.alert-take-button,
+.alert-snooze-button {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-padding: 8 16 8 16;
+}
+
+.alert-take-button {
+    -fx-background-color: #27ae60;
+    -fx-text-fill: white;
+}
+
+.alert-take-button:hover {
+    -fx-background-color: #2ecc71;
+}
+
+.alert-snooze-button {
+    -fx-background-color: #f39c12;
+    -fx-text-fill: white;
+}
+
+.alert-snooze-button:hover {
+    -fx-background-color: #e67e22;
+}
+
+/* Compact Upcoming Medicines Section */
+.upcoming-medicines-section-compact {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-padding: 20;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 3);
+    -fx-min-width: 450px;
+}
+
+.section-title-compact {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2c3e50;
+}
+
+.view-button-compact {
+    -fx-background-color: #3498db;
+    -fx-text-fill: white;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-padding: 6 12 6 12;
+}
+
+.view-button-compact:hover {
+    -fx-background-color: #2980b9;
+}
+
+.upcoming-medicines-flow-compact {
+    -fx-max-height: 300px;
+}
+
+/* Time-Based Medicine Groups */
+.medicine-time-group {
+    -fx-background-color: #ecf0f1;
+    -fx-background-radius: 12;
+    -fx-padding: 15;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 6, 0, 0, 2);
+    -fx-border-color: #bdc3c7;
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+}
+
+.medicine-time-group:hover {
+    -fx-background-color: #d5dbdb;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 8, 0, 0, 3);
+}
+
+.time-group-header {
+    -fx-alignment: CENTER_LEFT;
+}
+
+.time-display {
+    -fx-background-color: white;
+    -fx-background-radius: 8;
+    -fx-padding: 12;
+    -fx-min-width: 120px;
+    -fx-border-color: #3498db;
+    -fx-border-radius: 8;
+    -fx-border-width: 2;
+}
+
+.group-countdown-text {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #e67e22;
+}
+
+.group-scheduled-time {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #3498db;
+}
+
+.medicines-in-group {
+    -fx-background-color: white;
+    -fx-background-radius: 8;
+    -fx-padding: 12;
+    -fx-border-color: #95a5a6;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+}
+
+.medicine-count-text {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2c3e50;
+}
+
+.medicine-names-text {
+    -fx-font-size: 16px;
+    -fx-text-fill: #34495e;
+    -fx-font-weight: normal;
+    -fx-wrap-text: true;
+}
+
+/* No Medicines Message */
+.no-medicines-card-compact {
+    -fx-background-color: #d5f4e6;
+    -fx-background-radius: 10;
+    -fx-padding: 20;
+}
+
+.no-medicines-text-compact {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #27ae60;
+}
+
+/* Actions Section */
+.actions-section {
+    -fx-min-width: 250px;
+    -fx-max-width: 280px;
+}
+
+/* Compact Navigation Section */
+.navigation-section-compact {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-padding: 20;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 3);
+}
+
+.nav-title-compact {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #495057;
+}
+
+.nav-button-primary-compact {
+    -fx-background-color: #007bff;
+    -fx-text-fill: white;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 10;
+    -fx-text-alignment: center;
+    -fx-min-width: 90px;
+    -fx-min-height: 60px;
+    -fx-padding: 8;
+}
+
+.nav-button-primary-compact:hover {
+    -fx-background-color: #0056b3;
+    -fx-effect: dropshadow(gaussian, rgba(0,123,255,0.3), 8, 0, 0, 2);
+}
+
+/* Compact Help Section */
+.help-section-compact {
+    -fx-background-color: #fff3cd;
+    -fx-background-radius: 12;
+    -fx-padding: 20;
+    -fx-border-color: #ffeaa7;
+    -fx-border-radius: 12;
+    -fx-border-width: 2;
+}
+
+.emergency-button-compact {
+    -fx-background-color: #dc3545;
+    -fx-text-fill: white;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 10;
+    -fx-effect: dropshadow(gaussian, rgba(220,53,69,0.3), 10, 0, 0, 3);
+    -fx-min-width: 200px;
+    -fx-padding: 12;
+}
+
+.emergency-button-compact:hover {
+    -fx-background-color: #c82333;
+    -fx-effect: dropshadow(gaussian, rgba(220,53,69,0.5), 15, 0, 0, 5);
+}
+
+/* Compact Logout Section */
+.logout-section-compact {
+    -fx-background-color: #f8f9fa;
+    -fx-background-radius: 8;
+    -fx-padding: 8;
+    -fx-border-color: #dee2e6;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+}
+
+.logout-button-compact {
+    -fx-background-color: #6c757d;
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-background-radius: 8;
+    -fx-padding: 8 20 8 20;
+}
+
+.logout-button-compact:hover {
+    -fx-background-color: #545b62;
+}
+
+/* Urgent countdown styling for groups */
+.countdown-urgent .group-countdown-text {
+    -fx-text-fill: #e74c3c;
+}
+
+.countdown-soon .group-countdown-text {
+    -fx-text-fill: #f39c12;
+}
+
+.countdown-normal .group-countdown-text {
+    -fx-text-fill: #e67e22;
+}
+
+/* Animation classes for dynamic updates */
+.medicine-group-new {
+    -fx-effect: dropshadow(gaussian, rgba(46,204,113,0.4), 10, 0, 0, 3);
+    -fx-border-color: #2ecc71;
+}
+
+.medicine-group-due {
+    -fx-effect: dropshadow(gaussian, rgba(231,76,60,0.4), 10, 0, 0, 3);
+    -fx-border-color: #e74c3c;
+}
+
+/* High contrast mode for better visibility */
+.high-contrast .medicine-time-group {
+    -fx-border-width: 2;
+}
+
+.high-contrast .summary-value-compact {
+    -fx-font-size: 28px;
+}
+
+/* Responsive adjustments for smaller screens */
+@media screen and (max-height: 800px) {
+    .main-container {
+        -fx-padding: 6;
+    }
+
+    .welcome-section-compact,
+    .summary-section-compact,
+    .upcoming-medicines-section-compact,
+    .navigation-section-compact,
+    .help-section-compact {
+        -fx-padding: 12;
+    }
+
+    .upcoming-medicine-card-compact {
+        -fx-padding: 8;
+    }
+}
