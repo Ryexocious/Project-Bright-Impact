@@ -84,14 +84,6 @@
 
                             <Label text="Units / dose:" GridPane.rowIndex="4" GridPane.columnIndex="0" />
                             <Spinner fx:id="unitsPerDoseSpinner" GridPane.rowIndex="4" GridPane.columnIndex="1" />
-
-                            <!-- NEW: Max snooze count -->
-                            <Label text="Max snoozes (0-2):" GridPane.rowIndex="5" GridPane.columnIndex="0" />
-                            <Spinner fx:id="maxSnoozeSpinner" GridPane.rowIndex="5" GridPane.columnIndex="1">
-                                <tooltip>
-                                    <Tooltip text="Allowed snooze count. Each snooze is 10 minutes."/>
-                                </tooltip>
-                            </Spinner>
                         </GridPane>
 
                         <Separator/>

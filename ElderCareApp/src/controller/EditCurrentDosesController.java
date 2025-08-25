@@ -1,9 +1,7 @@
 package controller;
 
 import com.google.cloud.Timestamp;
-import com.google.cloud.firestore.DocumentReference;
-import com.google.cloud.firestore.DocumentSnapshot;
-import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.*;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -17,8 +15,7 @@ import java.io.IOException;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -37,15 +34,12 @@ public class EditCurrentDosesController {
     @FXML private DatePicker editStartDate;
     @FXML private DatePicker editEndDate;
     @FXML private TextField editAmountField;
-    // NON-EDITABLE unit label shown next to numeric amount (user cannot change)
     @FXML private Label editAmountUnitLabel;
 
     @FXML private ComboBox<String> timePickerCombo;
     @FXML private ListView<String> timesListView;
     @FXML private Button addTimeButton, removeTimeButton, clearTimesButton, updateMedicineBtn;
     @FXML private Label progressLabel;
-
-    // Back button to return to dashboard
     @FXML private Button backButton;
 
     private final ObservableList<MedicineRecord> medicineList = FXCollections.observableArrayList();
@@ -57,6 +51,15 @@ public class EditCurrentDosesController {
     private MedicineRecord currentEditing = null;
     private List<String> originalTimes = new ArrayList<>();
 
+    private final boolean DEBUG_DUMP_TODAY_ITEMS_ON_UPDATE = false;
+
+    // dedicated executor (replaces raw new Thread())
+    private final ExecutorService bgExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        return t;
+    });
+
     @FXML
     public void initialize() {
         setupColumns();
@@ -64,9 +67,8 @@ public class EditCurrentDosesController {
         detectLoggedInCaretaker();
         medicinesTable.setItems(medicineList);
 
-        // populate hourly dropdown
         for (int h = 0; h < 24; h++) timePickerCombo.getItems().add(String.format("%02d:00", h));
-        timePickerCombo.setEditable(true); // allow manual entry
+        timePickerCombo.setEditable(true);
         timePickerCombo.setPromptText("HH:mm");
         timesListView.setItems(timesList);
 
@@ -77,13 +79,10 @@ public class EditCurrentDosesController {
         updateMedicineBtn.setOnAction(e -> handleUpdateMedicine());
         editSection.setVisible(false);
 
-        // back button returns to dashboard
         backButton.setOnAction(e -> handleBack());
 
-        // When editing start date, filter available times (date logic remains)
         editStartDate.valueProperty().addListener((obs, oldV, newV) -> filterEditTimeOptionsForDate(newV));
 
-        // double-click to edit a time in the list — manual editing allowed (no "can't set past" constraint)
         timesListView.setOnMouseClicked(evt -> {
             if (evt.getClickCount() == 2) {
                 String selected = timesListView.getSelectionModel().getSelectedItem();
@@ -110,7 +109,6 @@ public class EditCurrentDosesController {
             }
         });
 
-        // allow Delete key to remove selected time
         timesListView.setOnKeyPressed(evt -> {
             switch (evt.getCode()) {
                 case DELETE:
@@ -163,7 +161,7 @@ public class EditCurrentDosesController {
     }
 
     private void detectLoggedInCaretaker() {
-        new Thread(() -> {
+        bgExecutor.submit(() -> {
             try {
                 List<QueryDocumentSnapshot> docs = FirestoreService.getFirestore()
                         .collection("users")
@@ -172,7 +170,6 @@ public class EditCurrentDosesController {
                         .get().get().getDocuments();
 
                 if (!docs.isEmpty()) {
-                    // store caretaker id for audit fields
                     currentCaretakerId = docs.get(0).getId();
 
                     Object elderIdObj = docs.get(0).get("elderId");
@@ -184,12 +181,12 @@ public class EditCurrentDosesController {
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
             }
-        }).start();
+        });
     }
 
     private void loadMedicines() {
         if (resolvedElderId == null) return;
-        new Thread(() -> {
+        bgExecutor.submit(() -> {
             try {
                 List<QueryDocumentSnapshot> meds = FirestoreService.getFirestore()
                         .collection("users")
@@ -221,7 +218,6 @@ public class EditCurrentDosesController {
                     } catch (Exception ignored) {}
 
                     if (start == null || end == null) {
-                        // fallback to any top-level string fields or skip
                         Object sTop = med.get("startDate");
                         Object eTop = med.get("endDate");
                         try {
@@ -231,7 +227,6 @@ public class EditCurrentDosesController {
                     }
 
                     if (start == null || end == null) {
-                        // skip malformed record
                         continue;
                     }
 
@@ -239,19 +234,15 @@ public class EditCurrentDosesController {
                     List<String> times = (List<String>) med.get("times");
                     if (times == null) times = new ArrayList<>();
 
-                    // skip if explicitly forceEnded
                     Boolean forceEnded = med.getBoolean("forceEnded");
                     if (Boolean.TRUE.equals(forceEnded)) continue;
 
-                    // Build a cutoff instant (forceEndedAt -> lastDose.timestamp -> activePeriod.endDate + latest time -> top-level endDate)
                     Instant cutoffInstant = buildCutoffInstant(med, times);
 
                     if (cutoffInstant != null && now.isAfter(cutoffInstant)) {
-                        // medicine ended in the past, skip
                         continue;
                     }
 
-                    // keep ongoing only if today <= end (we already used cutoff above)
                     if (!today.isAfter(end)) {
                         medicineList.add(new MedicineRecord(name, type, amount, start, end, new ArrayList<>(times), med.getReference()));
                     }
@@ -266,29 +257,17 @@ public class EditCurrentDosesController {
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
             }
-        }).start();
+        });
     }
 
-
-    /**
-     * Handle force ending logic:
-     * - First check cutoff instant: prefer forceEndedAt (if exists), otherwise lastDose.timestamp.
-     *   If cutoff exists and now is after cutoff => treat as already ended (notify + refresh).
-     * - Otherwise decide:
-     *   - If current time is before firstDose.timestamp -> confirm deletion (only confirmation, no reason) -> delete.
-     *   - Else -> prompt for force-end reason and update doc with forceEnded flags.
-     *
-     * After any successful end (delete or update): refresh the full screen and hide edit panel.
-     */
     private void handleMarkAsEnded(MedicineRecord med) {
-        new Thread(() -> {
+        bgExecutor.submit(() -> {
             try {
                 DocumentReference ref = med.getDocRef();
                 DocumentSnapshot snap = ref.get().get();
 
                 Instant nowInst = Instant.now();
 
-                // 1) Pre-check cutoff: forceEndedAt then lastDose.timestamp -> if now > cutoff -> already ended
                 Instant cutoffInstant = extractInstantFromObject(snap.get("forceEndedAt"));
                 if (cutoffInstant == null) cutoffInstant = extractInstantFromObject(snap.get("lastDose"));
 
@@ -300,15 +279,19 @@ public class EditCurrentDosesController {
                     return;
                 }
 
-                // 2) Get firstDose timestamp if present
                 Instant firstDoseInstant = extractFirstDoseInstant(snap);
 
                 if (firstDoseInstant != null && nowInst.isBefore(firstDoseInstant)) {
-                    // Before first dose: only ask for confirmation and delete if confirmed (no reason required)
                     boolean confirmed = showConfirmationSync("Confirm deletion", "This medicine has not reached its first dose yet. Delete it permanently?");
                     if (!confirmed) return;
 
                     ref.delete().get();
+
+                    if (resolvedElderId != null) {
+                        purgeMedicineFromAllSchedules(resolvedElderId, ref.getId());
+                        writeScheduleSyncPing(resolvedElderId);
+                    }
+
                     Platform.runLater(() -> {
                         showInfo("Deleted", "Medicine deleted successfully.");
                         loadMedicines();
@@ -316,13 +299,11 @@ public class EditCurrentDosesController {
                     return;
                 }
 
-                // 3) Otherwise (first dose passed or missing): perform force end after asking reason
                 Optional<String> reasonOpt = promptForRequiredReasonSync("Reason for force end", "Please enter a reason for force ending this medicine:");
-                if (reasonOpt.isEmpty()) return; // aborted
+                if (reasonOpt.isEmpty()) return;
 
                 String forceReason = reasonOpt.get();
 
-                // count completed (taken) doses before now
                 int takenCount = 0;
                 try {
                     List<QueryDocumentSnapshot> history = ref.collection("history")
@@ -340,9 +321,7 @@ public class EditCurrentDosesController {
                                 try {
                                     LocalDate d = LocalDate.parse(dateStr);
                                     if (!d.isAfter(LocalDate.now())) takenCount++;
-                                } catch (Exception ex) {
-                                    // ignore malformed
-                                }
+                                } catch (Exception ex) {}
                             }
                         }
                     }
@@ -357,8 +336,14 @@ public class EditCurrentDosesController {
                 updates.put("completedDosesBeforeForceEnd", takenCount);
                 updates.put("forceEndedReason", forceReason);
                 if (currentCaretakerId != null) updates.put("forceEndedBy", currentCaretakerId);
+                updates.put("lastModifiedAt", Timestamp.now());
 
                 ref.update(updates).get();
+
+                if (resolvedElderId != null) {
+                    purgeMedicineFromAllSchedules(resolvedElderId, ref.getId());
+                    writeScheduleSyncPing(resolvedElderId);
+                }
 
                 Platform.runLater(() -> {
                     showInfo("Force Ended", "Medicine marked as ended.");
@@ -369,7 +354,7 @@ public class EditCurrentDosesController {
                 e.printStackTrace();
                 Platform.runLater(() -> showAlert("Failed to end medicine: " + e.getMessage()));
             }
-        }).start();
+        });
     }
 
     private void showEditSection(MedicineRecord med) {
@@ -378,45 +363,31 @@ public class EditCurrentDosesController {
         editStartDate.setValue(med.getStartDate());
         editEndDate.setValue(med.getEndDate());
 
-        // Determine unit from type (Tablet/Capsule -> pill(s), Syrup -> ml, Injection -> units)
         String unitFromType = deriveUnitFromType(med.getType());
 
-        // Split stored amount into numeric & unit parts and show numeric in editable field,
-        // unit in non-editable label. But unit shown is chosen from type (unitFromType)
         String storedAmount = med.getAmount() == null ? "" : med.getAmount().trim();
         String numericPart = storedAmount;
         if (!storedAmount.isEmpty()) {
-            // attempt to extract numeric substring (before first space)
             int idx = storedAmount.indexOf(' ');
             if (idx > 0) {
                 String possibleNumeric = storedAmount.substring(0, idx).trim();
-                // verify if possibleNumeric is parseable as number (int/decimal)
                 try {
                     Double.parseDouble(possibleNumeric);
                     numericPart = possibleNumeric;
                 } catch (Exception ex) {
-                    // fallback: try to extract any digits from start
                     String digits = storedAmount.replaceAll("^([^0-9.-]*)([0-9.-]+).*", "$2");
                     if (!digits.equals(storedAmount)) {
                         try { Double.parseDouble(digits); numericPart = digits; } catch (Exception ignored) {}
-                    } else {
-                        numericPart = ""; // leave empty so user can type
-                    }
+                    } else numericPart = "";
                 }
             } else {
-                // no space - try parse whole string as number
                 try {
                     Double.parseDouble(storedAmount);
                     numericPart = storedAmount;
-                } catch (Exception ex) {
-                    numericPart = "";
-                }
+                } catch (Exception ex) { numericPart = ""; }
             }
-        } else {
-            numericPart = "";
-        }
+        } else numericPart = "";
 
-        // if numericPart empty, default to "1"
         if (numericPart == null || numericPart.isEmpty()) numericPart = "1";
 
         editAmountField.setText(numericPart);
@@ -425,33 +396,32 @@ public class EditCurrentDosesController {
         timesList.setAll(med.getTimesList());
         originalTimes = new ArrayList<>(med.getTimesList());
 
-        // Default: enable start date then check authoritative firstDose timestamp
         editStartDate.setDisable(false);
 
-        new Thread(() -> {
+        bgExecutor.submit(() -> {
             try {
                 DocumentSnapshot snap = med.getDocRef().get().get();
 
                 Instant firstDoseInstant = extractFirstDoseInstant(snap);
                 Instant now = Instant.now();
                 if (firstDoseInstant != null) {
-                    boolean disable = !now.isBefore(firstDoseInstant); // disable if now >= firstDoseInstant
+                    boolean disable = !now.isBefore(firstDoseInstant);
                     Platform.runLater(() -> {
                         editStartDate.setDisable(disable);
                         if (disable) editStartDate.setTooltip(new Tooltip("Start date locked: the first dose time has passed."));
                         else editStartDate.setTooltip(null);
                     });
                 } else {
-                    // fallback to checking times vs today (local heuristic)
                     LocalTime firstTime = med.getFirstDoseTime();
                     boolean disable = (LocalDate.now().isAfter(med.getStartDate())) ||
                             (LocalDate.now().isEqual(med.getStartDate()) && firstTime != null && LocalTime.now().isAfter(firstTime));
                     Platform.runLater(() -> editStartDate.setDisable(disable));
                 }
 
-                // filter time options for current editStartDate value (date logic remains)
-                Platform.runLater(() -> filterEditTimeOptionsForDate(editStartDate.getValue()));
-                Platform.runLater(this::updateProgressLabel);
+                Platform.runLater(() -> {
+                    filterEditTimeOptionsForDate(editStartDate.getValue());
+                    updateProgressLabel();
+                });
             } catch (Exception ex) {
                 ex.printStackTrace();
                 Platform.runLater(() -> {
@@ -459,33 +429,22 @@ public class EditCurrentDosesController {
                     updateProgressLabel();
                 });
             }
-        }).start();
+        });
     }
 
-    /**
-     * Determine unit label text from medicine type.
-     */
     private String deriveUnitFromType(String type) {
         if (type == null) return "";
         String t = type.trim();
-        if ("Tablet".equalsIgnoreCase(t) || "Capsule".equalsIgnoreCase(t)) {
-            return "pill(s)";
-        } else if ("Syrup".equalsIgnoreCase(t)) {
-            return "ml";
-        } else if ("Injection".equalsIgnoreCase(t) || "Injectable".equalsIgnoreCase(t)) {
-            return "units";
-        } else {
-            return ""; // empty means no suffix shown
-        }
+        if ("Tablet".equalsIgnoreCase(t) || "Capsule".equalsIgnoreCase(t)) return "pill(s)";
+        else if ("Syrup".equalsIgnoreCase(t)) return "ml";
+        else if ("Injection".equalsIgnoreCase(t) || "Injectable".equalsIgnoreCase(t)) return "units";
+        else return "";
     }
 
     private void addTime() {
         String input;
-        if (timePickerCombo.isEditable()) {
-            input = timePickerCombo.getEditor().getText();
-        } else {
-            input = timePickerCombo.getValue();
-        }
+        if (timePickerCombo.isEditable()) input = timePickerCombo.getEditor().getText();
+        else input = timePickerCombo.getValue();
         if (input == null) input = "";
         String time = input.trim();
         if (time.isEmpty()) {
@@ -493,7 +452,6 @@ public class EditCurrentDosesController {
             return;
         }
 
-        // normalize/validate time using LocalTime.parse
         LocalTime chosen;
         try {
             chosen = LocalTime.parse(time);
@@ -506,9 +464,7 @@ public class EditCurrentDosesController {
         if (!timesList.contains(formatted)) {
             timesList.add(formatted);
             FXCollections.sort(timesList);
-        } else {
-            showAlert("Time already present.");
-        }
+        } else showAlert("Time already present.");
     }
 
     private void removeTime() {
@@ -516,16 +472,6 @@ public class EditCurrentDosesController {
         if (selected != null) timesList.remove(selected);
     }
 
-    /**
-     * When updating:
-     * - Re-check firstDose.timestamp from Firestore to avoid race condition.
-     * - If firstDose has passed and user attempted to change startDate -> prevent it.
-     * - Date selection logic remains; time-selection past-checks have been removed.
-     * - Otherwise perform update and add forceUpdated flag and metadata (including reason if provided).
-     * - Prompt caretaker for required reason when changes are flagged as forceUpdated.
-     *
-     * After success: refresh whole screen and hide edit panel.
-     */
     private void handleUpdateMedicine() {
         if (currentEditing == null) return;
 
@@ -534,7 +480,6 @@ public class EditCurrentDosesController {
         String newAmountNumeric = editAmountField.getText().trim();
         String unit = editAmountUnitLabel.getText().trim();
 
-        // make a final normalized times list for safe capture by background thread
         final List<String> newTimesFinal = dedupeSortTimes(new ArrayList<>(timesList));
 
         if (newTimesFinal.isEmpty()) {
@@ -543,30 +488,24 @@ public class EditCurrentDosesController {
             return;
         }
 
-        // Compose final amount: numeric + " " + unit (unit label is NOT editable by user)
         String composedAmount;
-        if (newAmountNumeric.isEmpty()) {
-            // if numeric is empty, preserve previous full amount
-            composedAmount = currentEditing.getAmount();
-        } else {
+        if (newAmountNumeric.isEmpty()) composedAmount = currentEditing.getAmount();
+        else {
             if (unit == null || unit.isEmpty()) composedAmount = newAmountNumeric;
             else composedAmount = newAmountNumeric + " " + unit;
         }
 
-        // Re-check Firestore to avoid race conditions
-        new Thread(() -> {
+        bgExecutor.submit(() -> {
             try {
                 DocumentSnapshot snap = currentEditing.getDocRef().get().get();
                 Instant firstDoseInstant = extractFirstDoseInstant(snap);
                 Instant now = Instant.now();
 
                 if (firstDoseInstant != null && !now.isBefore(firstDoseInstant) && !Objects.equals(newStart, currentEditing.getStartDate())) {
-                    // cannot change start date
                     Platform.runLater(() -> showAlert("Cannot modify start date: the first dose timestamp has already passed."));
                     return;
                 }
 
-                // additional check (defensive): if start date already passed locally and newStart changed -> prevent
                 if (LocalDate.now().isAfter(currentEditing.getStartDate()) && !Objects.equals(newStart, currentEditing.getStartDate())) {
                     Platform.runLater(() -> showAlert("Cannot modify start date as it has already passed."));
                     return;
@@ -584,21 +523,50 @@ public class EditCurrentDosesController {
                 updates.put("times", newTimesFinal);
 
                 if (changed) {
-                    // prompt for required reason for manual/force update
                     Optional<String> reasonOpt = promptForRequiredReasonSync("Reason for update", "Please enter a reason for this manual update:");
-                    if (reasonOpt.isEmpty()) {
-                        // cancelled by user
-                        return;
-                    }
+                    if (reasonOpt.isEmpty()) return;
                     String reason = reasonOpt.get();
-
                     updates.put("forceUpdated", true);
                     updates.put("forceUpdatedAt", Timestamp.now());
                     updates.put("forceUpdatedReason", reason);
                     if (currentCaretakerId != null) updates.put("forceUpdatedBy", currentCaretakerId);
                 }
 
+                updates.put("lastModifiedAt", Timestamp.now());
+
                 currentEditing.getDocRef().update(updates).get();
+
+                if (changed && resolvedElderId != null) {
+                    try {
+                        String medId = currentEditing.getDocRef().getId();
+                        purgeMedicineFromTodaySchedule(resolvedElderId, medId);
+
+                        boolean purgeVisible = waitUntilTodayItemsPurged(resolvedElderId, medId, 5000, 200);
+                        if (!purgeVisible) {
+                            System.err.println("Warning: purgeDidNotBecomeVisibleForMed " + medId + " within timeout; continuing to create (may cause duplicate).");
+                        }
+
+                        if (DEBUG_DUMP_TODAY_ITEMS_ON_UPDATE) dumpTodayItemsForMedToLog(resolvedElderId, medId);
+
+                        createTodayScheduleItemsForMedicine(
+                                resolvedElderId,
+                                currentEditing.getDocRef(),
+                                medId,
+                                currentEditing.getName(),
+                                currentEditing.getType(),
+                                composedAmount,
+                                newTimesFinal,
+                                newStart,
+                                newEnd
+                        );
+
+                        writeScheduleSyncPing(resolvedElderId);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                } else {
+                    if (resolvedElderId != null) writeScheduleSyncPing(resolvedElderId);
+                }
 
                 Platform.runLater(() -> {
                     currentEditing.setStartDate(newStart);
@@ -609,7 +577,6 @@ public class EditCurrentDosesController {
                     medicinesTable.refresh();
                     updateProgressLabel();
 
-                    // Hide edit section and refresh the whole list
                     editSection.setVisible(false);
                     currentEditing = null;
                     loadMedicines();
@@ -619,7 +586,58 @@ public class EditCurrentDosesController {
                 e.printStackTrace();
                 Platform.runLater(() -> showAlert("Failed to update medicine: " + e.getMessage()));
             }
-        }).start();
+        });
+    }
+
+    private boolean waitUntilTodayItemsPurged(String elderId, String medId, long timeoutMs, long pollMs) {
+        long start = System.currentTimeMillis();
+        Firestore db = FirestoreService.getFirestore();
+        String todayId = LocalDate.now().format(fmt);
+        DocumentReference dayRef = db.collection("users").document(elderId).collection("schedules").document(todayId);
+        try {
+            while (System.currentTimeMillis() - start < timeoutMs) {
+                DocumentSnapshot daySnap = dayRef.get().get();
+                if (!daySnap.exists()) return true;
+                List<QueryDocumentSnapshot> items = dayRef.collection("items")
+                        .whereEqualTo("medicineId", medId)
+                        .get().get().getDocuments();
+                if (items.isEmpty()) return true;
+                Thread.sleep(pollMs);
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return false;
+    }
+
+    private void dumpTodayItemsForMedToLog(String elderId, String medId) {
+        bgExecutor.submit(() -> {
+            try {
+                Firestore db = FirestoreService.getFirestore();
+                String todayId = LocalDate.now().format(fmt);
+                DocumentReference dayRef = db.collection("users").document(elderId).collection("schedules").document(todayId);
+                DocumentSnapshot ds = dayRef.get().get();
+                if (!ds.exists()) {
+                    System.err.println("dumpTodayItemsForMedToLog: day doc missing for " + todayId);
+                    return;
+                }
+                List<QueryDocumentSnapshot> items = dayRef.collection("items").whereEqualTo("medicineId", medId).get().get().getDocuments();
+                System.err.println("===== Today's items for med " + medId + " (count=" + items.size() + ") =====");
+                for (QueryDocumentSnapshot it : items) {
+                    Object baseO = it.get("baseTimestamp");
+                    String baseStr = "<null>";
+                    if (baseO instanceof com.google.cloud.Timestamp) {
+                        com.google.cloud.Timestamp ts = (com.google.cloud.Timestamp) baseO;
+                        Instant inst = Instant.ofEpochSecond(ts.getSeconds(), ts.getNanos());
+                        baseStr = LocalDateTime.ofInstant(inst, ZoneId.systemDefault()).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                    }
+                    System.err.println("docId=" + it.getId() + " time=" + it.getString("time") + " base=" + baseStr + " status=" + it.getString("status") + " createdAt=" + it.get("createdAt"));
+                }
+                System.err.println("====================================================");
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        });
     }
 
     private void updateProgressLabel() {
@@ -646,10 +664,6 @@ public class EditCurrentDosesController {
         alert.showAndWait();
     }
 
-    /**
-     * Utility to extract firstDose.timestamp Instant from a medicine DocumentSnapshot.
-     * Accepts Map shaped firstDose {date, time, timestamp} or direct Timestamp.
-     */
     private Instant extractFirstDoseInstant(DocumentSnapshot medSnap) {
         try {
             Object firstDoseObj = medSnap.get("firstDose");
@@ -662,7 +676,6 @@ public class EditCurrentDosesController {
                 if (ts instanceof java.util.Date) {
                     return ((java.util.Date) ts).toInstant();
                 }
-                // fallback to composing from date & time fields
                 Object dateObj = ((Map<?, ?>) firstDoseObj).get("date");
                 Object timeObj = ((Map<?, ?>) firstDoseObj).get("time");
                 if (dateObj instanceof String) {
@@ -688,14 +701,6 @@ public class EditCurrentDosesController {
         return null;
     }
 
-    /**
-     * Try to extract an Instant from:
-     *  - null => null
-     *  - Firestore Timestamp
-     *  - java.util.Date
-     *  - Map containing a "timestamp" entry (which may also be Timestamp or Date)
-     *  - Map with "date"/"time" but no timestamp -> tries to parse into Instant
-     */
     private Instant extractInstantFromObject(Object obj) {
         try {
             if (obj == null) return null;
@@ -716,8 +721,8 @@ public class EditCurrentDosesController {
                 }
                 return null;
             }
-            if (obj instanceof Timestamp) {
-                return ((Timestamp) obj).toDate().toInstant();
+            if (obj instanceof com.google.cloud.Timestamp) {
+                return ((com.google.cloud.Timestamp) obj).toDate().toInstant();
             }
             if (obj instanceof java.util.Date) {
                 return ((java.util.Date) obj).toInstant();
@@ -729,25 +734,14 @@ public class EditCurrentDosesController {
         }
     }
 
-    /**
-     * Build cutoff Instant for a medicine document:
-     * 1) forceEndedAt (if present)
-     * 2) lastDose.timestamp (if present)
-     * 3) activePeriod.endDate + latest configured time (if present)
-     * 4) top-level "endDate" (string) + latest time
-     * Returns null if no usable cutoff found.
-     */
     private Instant buildCutoffInstant(DocumentSnapshot d, List<String> times) {
         try {
-            // prefer forceEndedAt
             Instant inst = extractInstantFromObject(d.get("forceEndedAt"));
             if (inst != null) return inst;
 
-            // fallback: lastDose.timestamp
             inst = extractInstantFromObject(d.get("lastDose"));
             if (inst != null) return inst;
 
-            // fallback: activePeriod.endDate + latest time from times list
             Object activePeriodObj = d.get("activePeriod");
             if (activePeriodObj instanceof Map) {
                 Object endDateObj = ((Map<?, ?>) activePeriodObj).get("endDate");
@@ -772,7 +766,6 @@ public class EditCurrentDosesController {
                 }
             }
 
-            // fallback: top-level "endDate" string
             Object topEnd = d.get("endDate");
             if (topEnd instanceof String) {
                 String endDateStr = (String) topEnd;
@@ -794,7 +787,6 @@ public class EditCurrentDosesController {
                 }
             }
 
-            // nothing usable
             return null;
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -802,10 +794,6 @@ public class EditCurrentDosesController {
         }
     }
 
-    /**
-     * Prompt user for a required reason synchronously. Runs the TextInputDialog on the FX thread and
-     * waits for the result. Returns Optional.empty() if the user cancelled.
-     */
     private Optional<String> promptForRequiredReasonSync(String title, String header) {
         AtomicReference<Optional<String>> resultRef = new AtomicReference<>(Optional.empty());
         CountDownLatch latch = new CountDownLatch(1);
@@ -826,25 +814,15 @@ public class EditCurrentDosesController {
                     else resultRef.set(Optional.empty());
                 } else if (res.isPresent()) {
                     resultRef.set(Optional.of(res.get().trim()));
-                } else {
-                    resultRef.set(Optional.empty());
-                }
+                } else resultRef.set(Optional.empty());
             } finally {
                 latch.countDown();
             }
         });
-        try {
-            latch.await();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-            return Optional.empty();
-        }
+        try { latch.await(); } catch (InterruptedException e) { e.printStackTrace(); return Optional.empty(); }
         return resultRef.get();
     }
 
-    /**
-     * Show a confirmation dialog synchronously (OK/Cancel). Returns true if OK pressed.
-     */
     private boolean showConfirmationSync(String title, String content) {
         AtomicBoolean out = new AtomicBoolean(false);
         CountDownLatch latch = new CountDownLatch(1);
@@ -859,19 +837,10 @@ public class EditCurrentDosesController {
                 latch.countDown();
             }
         });
-        try {
-            latch.await();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-            return false;
-        }
+        try { latch.await(); } catch (InterruptedException e) { e.printStackTrace(); return false; }
         return out.get();
     }
 
-    /**
-     * Filter the edit timePicker options for a given start date.
-     * If startDate == today, only times >= now are shown.
-     */
     private void filterEditTimeOptionsForDate(LocalDate selDate) {
         List<String> hourly = new ArrayList<>();
         for (int h = 0; h < 24; h++) hourly.add(String.format("%02d:00", h));
@@ -900,9 +869,6 @@ public class EditCurrentDosesController {
         }
     }
 
-    /**
-     * Back to dashboard
-     */
     private void handleBack() {
         try {
             javafx.scene.Parent root = javafx.fxml.FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
@@ -955,14 +921,197 @@ public class EditCurrentDosesController {
         }
     }
 
-    // -----------------------
-    // Helper: dedupe and sort times (HH:mm)
-    // -----------------------
     private List<String> dedupeSortTimes(Collection<String> times) {
         TreeSet<LocalTime> set = new TreeSet<>();
         for (String t : times) try { set.add(LocalTime.parse(t)); } catch (Exception ignored) {}
         List<String> out = new ArrayList<>();
         for (LocalTime lt : set) out.add(lt.format(DateTimeFormatter.ofPattern("HH:mm")));
         return out;
+    }
+
+    private void purgeMedicineFromAllSchedules(String elderId, String medId) {
+        try {
+            Firestore db = FirestoreService.getFirestore();
+            CollectionReference schedulesCol = db.collection("users").document(elderId).collection("schedules");
+            List<QueryDocumentSnapshot> days = schedulesCol.get().get().getDocuments();
+            for (QueryDocumentSnapshot dayDoc : days) {
+                try {
+                    CollectionReference itemsCol = dayDoc.getReference().collection("items");
+                    List<QueryDocumentSnapshot> items = itemsCol.whereEqualTo("medicineId", medId).get().get().getDocuments();
+
+                    if (!items.isEmpty()) {
+                        WriteBatch batch = db.batch();
+                        for (QueryDocumentSnapshot it : items) {
+                            batch.delete(it.getReference());
+                        }
+                        batch.commit().get();
+                    }
+                } catch (Exception inner) {
+                    inner.printStackTrace();
+                }
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void purgeMedicineFromTodaySchedule(String elderId, String medId) {
+        try {
+            Firestore db = FirestoreService.getFirestore();
+            String todayId = LocalDate.now().format(fmt);
+            DocumentReference dayRef = db.collection("users").document(elderId).collection("schedules").document(todayId);
+            DocumentSnapshot daySnap = dayRef.get().get();
+            if (!daySnap.exists()) return;
+
+            CollectionReference itemsCol = dayRef.collection("items");
+            List<QueryDocumentSnapshot> items = itemsCol.whereEqualTo("medicineId", medId).get().get().getDocuments();
+            if (items.isEmpty()) return;
+
+            WriteBatch batch = db.batch();
+            for (QueryDocumentSnapshot it : items) {
+                batch.delete(it.getReference());
+            }
+            batch.commit().get();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void writeScheduleSyncPing(String elderId) {
+        try {
+            Firestore db = FirestoreService.getFirestore();
+            DocumentReference ping = db.collection("users")
+                    .document(elderId)
+                    .collection("sync")
+                    .document("schedulePing");
+            Map<String, Object> data = new HashMap<>();
+            data.put("ts", Timestamp.now());
+            ping.set(data, SetOptions.merge());
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void createTodayScheduleItemsForMedicine(String elderId,
+                                                    DocumentReference medRef,
+                                                    String medId,
+                                                    String name,
+                                                    String type,
+                                                    String amount,
+                                                    List<String> times,
+                                                    LocalDate startDate,
+                                                    LocalDate endDate) {
+        if (medId == null || elderId == null) return;
+        try {
+            LocalDate today = LocalDate.now();
+            if (startDate != null && today.isBefore(startDate)) return;
+            if (endDate != null && today.isAfter(endDate)) return;
+
+            Firestore db = FirestoreService.getFirestore();
+            String dateId = today.format(fmt);
+            DocumentReference dayRef = db.collection("users").document(elderId)
+                    .collection("schedules").document(dateId);
+
+            Map<String, Object> meta = new HashMap<>();
+            meta.put("createdAt", Timestamp.now());
+            meta.put("date", dateId);
+            dayRef.set(meta, SetOptions.merge()).get();
+
+            CollectionReference itemsCol = dayRef.collection("items");
+
+            List<QueryDocumentSnapshot> existing = itemsCol.whereEqualTo("medicineId", medId).get().get().getDocuments();
+            if (!existing.isEmpty()) {
+                WriteBatch delBatch = db.batch();
+                for (QueryDocumentSnapshot it : existing) delBatch.delete(it.getReference());
+                delBatch.commit().get();
+            }
+
+            ZoneId zid = ZoneId.systemDefault();
+            List<String> dedupedTimes = dedupeSortTimes(times);
+            for (String t : dedupedTimes) {
+                try {
+                    LocalTime lt = LocalTime.parse(t);
+                    LocalDateTime base = LocalDateTime.of(today, lt);
+                    Instant baseInstant = base.atZone(zid).toInstant();
+                    com.google.cloud.Timestamp baseTs = com.google.cloud.Timestamp.ofTimeSecondsAndNanos(baseInstant.getEpochSecond(), baseInstant.getNano());
+
+                    LocalDateTime snoozeEnd = base.plusMinutes(30);
+                    String initialStatus;
+                    LocalDateTime nowLd = LocalDateTime.now();
+                    if (nowLd.isBefore(base)) initialStatus = "hasnt_arrived";
+                    else if (!nowLd.isBefore(base) && nowLd.isBefore(snoozeEnd)) initialStatus = "in_snooze_duration";
+                    else initialStatus = "missed";
+
+                    List<QueryDocumentSnapshot> check = itemsCol
+                            .whereEqualTo("medicineId", medId)
+                            .whereEqualTo("time", t)
+                            .get().get().getDocuments();
+                    if (!check.isEmpty()) {
+                        for (QueryDocumentSnapshot found : check) {
+                            Map<String, Object> upd = new HashMap<>();
+                            upd.put("medicineRef", medRef);
+                            upd.put("name", name);
+                            upd.put("type", type);
+                            upd.put("amount", amount);
+                            upd.put("baseTimestamp", baseTs);
+                            upd.put("status", initialStatus);
+                            upd.put("time", t);
+                            upd.put("updatedAt", Timestamp.now());
+                            found.getReference().set(upd, SetOptions.merge()).get();
+                        }
+                        continue;
+                    }
+
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("medicineId", medId);
+                    item.put("medicineRef", medRef);
+                    item.put("name", name);
+                    item.put("type", type);
+                    item.put("amount", amount);
+                    item.put("time", t);
+                    item.put("baseTimestamp", baseTs);
+                    item.put("status", initialStatus);
+                    item.put("createdAt", Timestamp.now());
+
+                    itemsCol.document().set(item).get();
+
+                    if ("missed".equals(initialStatus)) {
+                        logMissedDoseForMedicine(elderId, medId, name, type, amount, baseTs);
+                    }
+
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void logMissedDoseForMedicine(String elderId, String medId, String name, String type, String amount, com.google.cloud.Timestamp baseTs) {
+        try {
+            Firestore db = FirestoreService.getFirestore();
+            CollectionReference missedCol = db.collection("users").document(elderId).collection("missed_doses");
+            Map<String, Object> log = new HashMap<>();
+            log.put("medicineId", medId);
+            log.put("name", name);
+            log.put("type", type);
+            log.put("amount", amount);
+            if (baseTs != null) log.put("missedDoseTime", baseTs);
+            else log.put("missedDoseTime", Timestamp.now());
+            log.put("loggedAt", Timestamp.now());
+            missedCol.document().set(log).get();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    // Call to clean up executor when scene is closed
+    public void dispose() {
+        try {
+            if (bgExecutor != null && !bgExecutor.isShutdown()) bgExecutor.shutdownNow();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
     }
 }
