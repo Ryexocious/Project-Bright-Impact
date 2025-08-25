@@ -3,137 +3,1183 @@ package controller;
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.*;
 import javafx.animation.KeyFrame;
+import javafx.animation.PauseTransition;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
-import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 import utils.EmailService;
 import utils.FirestoreService;
 
+import java.io.File;
 import java.io.IOException;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.ExecutionException;
 
 import model.TimerController;
+import javafx.geometry.Pos;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
 
 /**
- * Elder dashboard — updated to support intake-window, snooze and auto-SOS behavior.
+ * ElderDashboardController (refactored for realtime updates + safer threading + cleanup)
  *
- * Behavior summary:
- *  - Pre-dose: blue progress from now -> next dose time.
- *  - At dose time: switch to intake window (red) for 10 minutes.
- *    - If Confirm pressed within the window => mark taken & reset to next dose.
- *    - If not pressed -> allow up to 2 snoozes (default) — after all snoozes are used, auto SOS.
+ * Key changes:
+ *  - grouped missed-dose notifications (single email per scheduled time grouping)
+ *  - centralized confirm button visibility handling
+ *  - FIX: when confirming a snoozed group, mark all schedule items that share the same baseTimestamp as taken
+ *  - Alarm playback during selected snooze sub-windows using relative "data/alarm.mp3"
  */
 public class ElderDashboardController {
 
+    private final Object lock = new Object();
+
     private String elderUsername;
     private String pairingCode;
-    private String elderId; // store elder document id
+    private String elderId; // elder document id
 
-    @FXML private Button helpRequestButton;
-    @FXML private Button viewMedicineButton;
-    @FXML private Button viewVitalsButton;
-    @FXML private Button logoutButton;
-    @FXML private Label welcomeLabel;
+    @javafx.fxml.FXML private Button helpRequestButton;
+    @javafx.fxml.FXML private Button viewMedicineButton;
+    @javafx.fxml.FXML private Button viewVitalsButton;
+    @javafx.fxml.FXML private Button logoutButton;
+    @javafx.fxml.FXML private Label welcomeLabel;
 
-    // Timer + medicines
-    @FXML private VBox timerContainer;
-    @FXML private StackPane timerHost;
-    @FXML private VBox medsListBox;
-    @FXML private Button confirmIntakeButton;    // shown only during intake window
-    @FXML private Label nextDoseLabel;
-    @FXML private Label intakeStatusLabel;       // optional small status (snooze count etc.)
+    @javafx.fxml.FXML private Button pairingCodeButton;
+    @javafx.fxml.FXML private Label copyToastLabel;
+
+    @javafx.fxml.FXML private Label upcomingTitleLabel;
+    @javafx.fxml.FXML private VBox timerContainer;
+    @javafx.fxml.FXML private StackPane timerHost;
+    @javafx.fxml.FXML private VBox medsListBox;
+    @javafx.fxml.FXML private Button confirmIntakeButton;
 
     private Timeline countdownTimeline;
 
-    // Next scheduled dose (for today) datetime
+    // timer target and window
     private LocalDateTime nextDoseDateTime;
-    private long initialWindowSeconds = 0L; // seconds captured at scheduling time (now->nextDose)
+    private long initialWindowSeconds = 0L;
 
-    // Intake-window state
-    private boolean inIntakeWindow = false;
-    private long intakeRemainingSeconds = 0L; // seconds left in current intake/snooze window
-    private final long INTAKE_WINDOW_SECONDS = 10 * 60L; // 10 minutes
-    private int snoozesUsed = 0;
-    private final int maxSnoozesAllowed = 2;  // default 2 snoozes
+    private enum Mode { IDLE, PRE_DOSE, SNOOZE }
+    private Mode currentMode = Mode.IDLE;
 
-    private List<MedicineSchedule> currentDueMedicines = new ArrayList<>();
+    // guarded by lock
+    private List<ScheduleItem> currentDueItems = new ArrayList<>();
 
-    private DateTimeFormatter labelDateTimeFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    // prevents immediate re-show for the same group that was just confirmed/hidden
+    private volatile LocalDateTime lastShownConfirmGroupBase = null;
 
-    // Canvas timer view
+    private final DateTimeFormatter labelDateTimeFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private final DateTimeFormatter dateIdFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
     private TimerController timerView;
 
-    /* ==========================
-       Initialisation & User actions
-       ========================== */
+    // Executors
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        t.setName("elder-dashboard-rollover-check");
+        return t;
+    });
 
-    /**
-     * Call this AFTER you have loaded the FXML and want the controller to begin (pass username).
-     * Your app should call initializeElder(loggedInUsername) after login.
-     */
+    private final ExecutorService bgExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        return t;
+    });
+
+    private ListenerRegistration medsListener = null;
+    private ListenerRegistration todayItemsListener = null;
+    private volatile String currentTodayId = null;
+
+    /* ===========================
+       Alarm (media) support
+       =========================== */
+    private final Object alarmLock = new Object();
+    private volatile MediaPlayer alarmPlayer = null;
+    private volatile boolean alarmPlaying = false;
+
+    // Total snooze window in seconds (30 minutes)
+    private static final long SNOOZE_TOTAL_SECONDS = 30 * 60;
+
+    // Check if remainingSeconds falls into any of the alarm-trigger windows
+    private boolean isInAlarmWindow(long remainingSeconds) {
+        if (remainingSeconds < 0) return false;
+        // ranges inclusive [lower, upper]
+        // 29:59 -> 28:00  => [1680, 1799]
+        // 19:59 -> 18:00  => [1080, 1199]
+        // 9:59  -> 8:00   => [480, 599]
+        // 1:59  -> 0:00   => [0, 119]
+        return (remainingSeconds >= 1680 && remainingSeconds <= 1799)
+                || (remainingSeconds >= 1080 && remainingSeconds <= 1199)
+                || (remainingSeconds >= 480 && remainingSeconds <= 599)
+                || (remainingSeconds >= 0 && remainingSeconds <= 119);
+    }
+
+    private void startAlarmIfNeeded() {
+        // must run on JavaFX thread for MediaPlayer interactions
+        if (alarmPlaying) return;
+        Platform.runLater(() -> {
+            synchronized (alarmLock) {
+                if (alarmPlaying) return;
+                try {
+                    File f = new File("data/alarm.mp3"); // relative path to project working dir
+                    if (!f.exists()) {
+                        System.err.println("Alarm file not found (expected relative data/alarm.mp3). Absolute checked: " + f.getAbsolutePath());
+                        return;
+                    }
+                    String uri = f.toURI().toString();
+                    Media media = new Media(uri);
+                    MediaPlayer mp = new MediaPlayer(media);
+                    mp.setCycleCount(MediaPlayer.INDEFINITE);
+                    mp.setOnError(() -> System.err.println("Alarm media error: " + mp.getError()));
+                    mp.setOnEndOfMedia(() -> {
+                        // setCycleCount(INDEFINITE) already loops; this ensures restart if needed
+                        try { mp.seek(Duration.ZERO); } catch (Exception ignored) {}
+                    });
+                    mp.play();
+                    alarmPlayer = mp;
+                    alarmPlaying = true;
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    alarmPlayer = null;
+                    alarmPlaying = false;
+                }
+            }
+        });
+    }
+
+    private void stopAlarmIfNeeded() {
+        Platform.runLater(() -> {
+            synchronized (alarmLock) {
+                if (alarmPlayer != null) {
+                    try {
+                        alarmPlayer.stop();
+                        alarmPlayer.dispose();
+                    } catch (Exception ignored) {}
+                    alarmPlayer = null;
+                }
+                alarmPlaying = false;
+            }
+        });
+    }
+
+    /* ===========================
+       Public initializer
+       =========================== */
     public void initializeElder(String loggedInUsername) {
-        // UI pre-state
         if (helpRequestButton != null) helpRequestButton.setDisable(true);
         if (welcomeLabel != null) welcomeLabel.setText("Loading...");
+
+        if (pairingCodeButton != null) {
+            pairingCodeButton.setText("Loading...");
+            pairingCodeButton.setDisable(true);
+        }
+        if (copyToastLabel != null) copyToastLabel.setVisible(false);
+        if (upcomingTitleLabel != null) upcomingTitleLabel.setText("Upcoming Medicines");
 
         Firestore db = FirestoreService.getFirestore();
         CollectionReference users = db.collection("users");
 
-        new Thread(() -> {
+        bgExecutor.submit(() -> {
             try {
-                QuerySnapshot elderSnapshot = users
+                QuerySnapshot snap = users
                         .whereEqualTo("username", loggedInUsername)
                         .whereEqualTo("role", "elder")
                         .get()
                         .get();
 
-                if (!elderSnapshot.isEmpty()) {
-                    QueryDocumentSnapshot elderDoc = elderSnapshot.getDocuments().get(0);
+                if (!snap.isEmpty()) {
+                    QueryDocumentSnapshot elderDoc = snap.getDocuments().get(0);
                     this.elderUsername = elderDoc.getString("username");
                     this.pairingCode = elderDoc.getString("pairingCode");
                     this.elderId = elderDoc.getId();
 
                     Platform.runLater(() -> {
                         if (helpRequestButton != null) helpRequestButton.setDisable(false);
-                        if (welcomeLabel != null) welcomeLabel.setText("Welcome, " + elderUsername + " 👴");
+                        if (welcomeLabel != null) welcomeLabel.setText("Welcome, " + (elderUsername == null ? "" : elderUsername));
+                        if (pairingCodeButton != null) {
+                            pairingCodeButton.setDisable(false);
+                            pairingCodeButton.setText(pairingCode == null ? "—" : pairingCode);
+                        }
                     });
 
-                    loadMedicinesAndStartTimer();
+                    setupRealtimeListenersAndRollover();
+                    ensureTodayScheduleAndProcess();
+
                 } else {
                     Platform.runLater(() -> {
                         if (welcomeLabel != null) welcomeLabel.setText("Elder not found");
+                        if (pairingCodeButton != null) {
+                            pairingCodeButton.setText("No pairing");
+                            pairingCodeButton.setDisable(true);
+                        }
                     });
                 }
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
                 Platform.runLater(() -> {
                     if (welcomeLabel != null) welcomeLabel.setText("Failed to load elder details");
+                    if (pairingCodeButton != null) {
+                        pairingCodeButton.setText("Error");
+                        pairingCodeButton.setDisable(true);
+                    }
                 });
             }
-        }).start();
+        });
 
-        // hide confirm button until intake window triggered
-        if (confirmIntakeButton != null) confirmIntakeButton.setVisible(false);
-        if (intakeStatusLabel != null) intakeStatusLabel.setText("");
+        if (confirmIntakeButton != null) {
+            confirmIntakeButton.setVisible(false);
+            confirmIntakeButton.setDisable(false);
+        }
+        lastShownConfirmGroupBase = null;
     }
 
-    @FXML
+    /* ===========================
+       Centralized confirm button visibility helper
+       =========================== */
+    private void setConfirmButtonVisible(boolean visible, LocalDateTime groupBase) {
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(() -> setConfirmButtonVisible(visible, groupBase));
+            return;
+        }
+        if (confirmIntakeButton == null) return;
+
+        if (visible) {
+            if (groupBase != null && groupBase.equals(lastShownConfirmGroupBase)) {
+                confirmIntakeButton.setDisable(false);
+                confirmIntakeButton.setVisible(true);
+                return;
+            }
+            confirmIntakeButton.setVisible(true);
+            confirmIntakeButton.setDisable(false);
+            lastShownConfirmGroupBase = groupBase;
+        } else {
+            confirmIntakeButton.setVisible(false);
+            confirmIntakeButton.setDisable(true);
+            lastShownConfirmGroupBase = groupBase;
+        }
+    }
+
+    /* ===========================
+       Realtime listeners & rollover
+       =========================== */
+    private void setupRealtimeListenersAndRollover() {
+        if (elderId == null) return;
+        Firestore db = FirestoreService.getFirestore();
+
+        tryAttachMedsListener(db);
+        attachTodayItemsListenerForCurrentDay(db);
+
+        scheduler.scheduleAtFixedRate(() -> {
+            if (elderId == null) return;
+            String newTodayId = LocalDate.now().format(dateIdFmt);
+            if (!Objects.equals(newTodayId, currentTodayId)) {
+                currentTodayId = newTodayId;
+                Firestore fdb = FirestoreService.getFirestore();
+                detachTodayItemsListener();
+                attachTodayItemsListenerForCurrentDay(fdb);
+                bgExecutor.submit(this::ensureTodayScheduleAndProcess);
+            }
+        }, 30, 30, TimeUnit.SECONDS);
+    }
+
+    private void tryAttachMedsListener(Firestore db) {
+        if (medsListener != null) {
+            try { medsListener.remove(); } catch (Exception ignored) {}
+            medsListener = null;
+        }
+
+        CollectionReference medsCol = db.collection("users").document(elderId).collection("medicines");
+        medsListener = medsCol.addSnapshotListener((snap, error) -> {
+            if (error != null) {
+                System.err.println("Medicines listener error: " + error);
+                return;
+            }
+            bgExecutor.submit(() -> {
+                try {
+                    ensureTodayScheduleAndProcess();
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            });
+        });
+    }
+
+    private void attachTodayItemsListenerForCurrentDay(Firestore db) {
+        if (elderId == null) return;
+        String todayId = LocalDate.now().format(dateIdFmt);
+        currentTodayId = todayId;
+        DocumentReference todayRef = db.collection("users").document(elderId)
+                .collection("schedules").document(todayId);
+
+        detachTodayItemsListener();
+
+        todayItemsListener = todayRef.collection("items").addSnapshotListener((snap, error) -> {
+            if (error != null) {
+                System.err.println("Today items listener error: " + error);
+                return;
+            }
+            if (snap == null) return;
+
+            List<ScheduleItem> raw = new ArrayList<>();
+            for (DocumentSnapshot d : snap.getDocuments()) {
+                try {
+                    ScheduleItem si = ScheduleItem.fromSnapshot(d);
+                    raw.add(si);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+
+            List<ScheduleItem> itemsToUse = computeDedupedAndEffectiveItems(raw);
+
+            Platform.runLater(() -> {
+                try {
+                    scheduleNextImmediateDoseFromItems(itemsToUse);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            });
+        });
+    }
+
+    private List<ScheduleItem> computeDedupedAndEffectiveItems(List<ScheduleItem> raw) {
+        Map<String, ScheduleItem> bestByMed = new HashMap<>();
+        List<ScheduleItem> finals = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (ScheduleItem s : raw) {
+            if (s.medicineId == null) {
+                finals.add(s);
+                continue;
+            }
+            if ("taken".equals(s.status) || "missed".equals(s.status)) {
+                finals.add(s);
+                continue;
+            }
+            ScheduleItem prev = bestByMed.get(s.medicineId);
+            if (prev == null) bestByMed.put(s.medicineId, s);
+            else {
+                if (s.baseTimestamp != null && prev.baseTimestamp != null) {
+                    if (s.baseTimestamp.isAfter(prev.baseTimestamp)) bestByMed.put(s.medicineId, s);
+                } else if (s.baseTimestamp != null && prev.baseTimestamp == null) {
+                    bestByMed.put(s.medicineId, s);
+                }
+            }
+        }
+
+        List<ScheduleItem> out = new ArrayList<>(finals);
+        for (ScheduleItem s : bestByMed.values()) {
+            String eff = computeEffectiveStatus(s, now);
+            s.effectiveStatus = eff;
+            out.add(s);
+        }
+        return out;
+    }
+
+    private String computeEffectiveStatus(ScheduleItem s, LocalDateTime now) {
+        if (s == null) return "hasnt_arrived";
+        if ("taken".equals(s.status) || "missed".equals(s.status)) return s.status;
+        if (s.baseTimestamp == null) return "hasnt_arrived";
+        LocalDateTime base = s.baseTimestamp;
+        LocalDateTime snoozeEnd = base.plusMinutes(30);
+        if (now.isBefore(base)) return "hasnt_arrived";
+        if (!now.isBefore(base) && now.isBefore(snoozeEnd)) return "in_snooze_duration";
+        return "missed";
+    }
+
+    private void detachTodayItemsListener() {
+        if (todayItemsListener != null) {
+            try { todayItemsListener.remove(); } catch (Exception ignored) {}
+            todayItemsListener = null;
+        }
+    }
+
+    private void teardownRealtimeListeners() {
+        if (medsListener != null) {
+            try { medsListener.remove(); } catch (Exception ignored) {}
+            medsListener = null;
+        }
+        detachTodayItemsListener();
+    }
+
+    /* ===========================
+       Schedule management
+       =========================== */
+
+    private void ensureTodayScheduleAndProcess() {
+        if (elderId == null) return;
+        Firestore db = FirestoreService.getFirestore();
+        String todayId = LocalDate.now().format(dateIdFmt);
+        DocumentReference todayRef = db.collection("users").document(elderId)
+                .collection("schedules").document(todayId);
+
+        bgExecutor.submit(() -> {
+            try {
+                DocumentSnapshot todaySnap = todayRef.get().get();
+                if (todaySnap.exists()) {
+                    syncScheduleWithMedicines(todayRef);
+                    updateStatusesForToday(todayRef);
+                    loadTodayItemsAndStartTimer(todayRef);
+                } else {
+                    // handle leftover from yesterday
+                    String yesterdayId = LocalDate.now().minusDays(1).format(dateIdFmt);
+                    DocumentReference yRef = db.collection("users").document(elderId)
+                            .collection("schedules").document(yesterdayId);
+                    DocumentSnapshot ySnap = yRef.get().get();
+                    if (ySnap.exists()) {
+                        QuerySnapshot pending = yRef.collection("items")
+                                .whereEqualTo("status", "hasnt_arrived")
+                                .get().get();
+
+                        List<ScheduleItem> newlyMarked = new ArrayList<>();
+                        for (DocumentSnapshot p : pending.getDocuments()) {
+                            ScheduleItem si = ScheduleItem.fromSnapshot(p);
+                            markItemMissedAndLog(p.getReference(), si, db);
+                            newlyMarked.add(si);
+                        }
+
+                        if (!newlyMarked.isEmpty()) {
+                            notifyCaretakersAboutMissedDoses(newlyMarked);
+                        }
+                    }
+                    createTodayScheduleFromMedicines(todayRef);
+                    updateStatusesForToday(todayRef);
+                    loadTodayItemsAndStartTimer(todayRef);
+                }
+            } catch (InterruptedException | ExecutionException ex) {
+                ex.printStackTrace();
+            }
+        });
+    }
+
+    private void createTodayScheduleFromMedicines(DocumentReference todayRef) {
+        Firestore db = FirestoreService.getFirestore();
+        CollectionReference medsCol = db.collection("users").document(elderId).collection("medicines");
+
+        try {
+            Map<String, Object> meta = new HashMap<>();
+            meta.put("createdAt", Timestamp.now());
+            meta.put("date", todayRef.getId());
+            todayRef.set(meta).get();
+
+            QuerySnapshot medsSnap = medsCol.get().get();
+            LocalDate today = LocalDate.now();
+            LocalDateTime now = LocalDateTime.now();
+
+            for (DocumentSnapshot medDoc : medsSnap.getDocuments()) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> activePeriod = (Map<String, Object>) medDoc.get("activePeriod");
+                if (!isMedicineActiveOn(activePeriod, today)) continue;
+
+                Object timesObj = medDoc.get("times");
+                List<String> times = new ArrayList<>();
+                if (timesObj instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<String> tmp = (List<String>) timesObj;
+                    times.addAll(tmp);
+                }
+
+                String medId = medDoc.getId();
+                String name = medDoc.getString("name");
+                String type = medDoc.getString("type");
+                String amount = medDoc.getString("amount");
+
+                for (String t : times) {
+                    try {
+                        LocalTime lt = LocalTime.parse(t);
+                        LocalDateTime base = LocalDateTime.of(today, lt);
+                        Instant baseInstant = base.atZone(ZoneId.systemDefault()).toInstant();
+                        com.google.cloud.Timestamp baseTs = com.google.cloud.Timestamp.ofTimeSecondsAndNanos(baseInstant.getEpochSecond(), baseInstant.getNano());
+
+                        LocalDateTime snoozeEnd = base.plusMinutes(30);
+                        String initialStatus;
+                        if (now.isBefore(base)) {
+                            initialStatus = "hasnt_arrived";
+                        } else if (!now.isBefore(base) && now.isBefore(snoozeEnd)) {
+                            initialStatus = "in_snooze_duration";
+                        } else {
+                            initialStatus = "missed";
+                        }
+
+                        Map<String, Object> item = new HashMap<>();
+                        item.put("medicineId", medId);
+                        item.put("medicineRef", medDoc.getReference());
+                        item.put("name", name);
+                        item.put("type", type);
+                        item.put("amount", amount);
+                        item.put("time", t);
+                        item.put("baseTimestamp", baseTs);
+                        item.put("status", initialStatus);
+                        item.put("createdAt", Timestamp.now());
+
+                        DocumentReference itemRef = todayRef.collection("items").document();
+                        itemRef.set(item).get();
+
+                        if ("missed".equals(initialStatus)) {
+                            ScheduleItem s = new ScheduleItem();
+                            s.id = itemRef.getId();
+                            s.medicineId = medId;
+                            s.medicineRef = medDoc.getReference();
+                            s.name = name;
+                            s.type = type;
+                            s.amount = amount;
+                            s.time = t;
+                            s.baseTimestamp = base;
+                            s.status = "missed";
+                            s.docRef = itemRef;
+
+                            markItemMissedAndLog(itemRef, s, db);
+                        }
+                    } catch (Exception ex) {
+                        // skip parse errors
+                    }
+                }
+            }
+        } catch (InterruptedException | ExecutionException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void syncScheduleWithMedicines(DocumentReference todayRef) {
+        Firestore db = FirestoreService.getFirestore();
+
+        try {
+            QuerySnapshot itemsSnap = todayRef.collection("items").get().get();
+            Set<String> existingKeys = new HashSet<>();
+            for (DocumentSnapshot d : itemsSnap.getDocuments()) {
+                String mid = d.getString("medicineId");
+                String time = d.getString("time");
+                if (mid != null && time != null) existingKeys.add(mid + "|" + time);
+            }
+
+            QuerySnapshot medsSnap = db.collection("users").document(elderId).collection("medicines").get().get();
+            LocalDate today = LocalDate.now();
+            LocalDateTime now = LocalDateTime.now();
+
+            for (DocumentSnapshot medDoc : medsSnap.getDocuments()) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> activePeriod = (Map<String, Object>) medDoc.get("activePeriod");
+                if (!isMedicineActiveOn(activePeriod, today)) continue;
+
+                Object timesObj = medDoc.get("times");
+                List<String> times = new ArrayList<>();
+                if (timesObj instanceof List) { @SuppressWarnings("unchecked") List<String> tmp = (List<String>) timesObj; times.addAll(tmp); }
+
+                String medId = medDoc.getId();
+                String name = medDoc.getString("name");
+                String type = medDoc.getString("type");
+                String amount = medDoc.getString("amount");
+
+                for (String t : times) {
+                    String key = medId + "|" + t;
+                    if (existingKeys.contains(key)) continue;
+
+                    try {
+                        LocalTime lt = LocalTime.parse(t);
+                        LocalDateTime base = LocalDateTime.of(today, lt);
+                        Instant baseInstant = base.atZone(ZoneId.systemDefault()).toInstant();
+                        com.google.cloud.Timestamp baseTs = com.google.cloud.Timestamp.ofTimeSecondsAndNanos(baseInstant.getEpochSecond(), baseInstant.getNano());
+
+                        LocalDateTime snoozeEnd = base.plusMinutes(30);
+                        String initialStatus;
+                        if (now.isBefore(base)) {
+                            initialStatus = "hasnt_arrived";
+                        } else if (!now.isBefore(base) && now.isBefore(snoozeEnd)) {
+                            initialStatus = "in_snooze_duration";
+                        } else {
+                            initialStatus = "missed";
+                        }
+
+                        Map<String, Object> item = new HashMap<>();
+                        item.put("medicineId", medId);
+                        item.put("medicineRef", medDoc.getReference());
+                        item.put("name", name);
+                        item.put("type", type);
+                        item.put("amount", amount);
+                        item.put("time", t);
+                        item.put("baseTimestamp", baseTs);
+                        item.put("status", initialStatus);
+                        item.put("createdAt", Timestamp.now());
+
+                        DocumentReference itemRef = todayRef.collection("items").document();
+                        itemRef.set(item).get();
+
+                        if ("missed".equals(initialStatus)) {
+                            ScheduleItem s = new ScheduleItem();
+                            s.id = itemRef.getId();
+                            s.medicineId = medId;
+                            s.medicineRef = medDoc.getReference();
+                            s.name = name;
+                            s.type = type;
+                            s.amount = amount;
+                            s.time = t;
+                            s.baseTimestamp = base;
+                            s.status = "missed";
+                            s.docRef = itemRef;
+
+                            markItemMissedAndLog(itemRef, s, db);
+                        }
+
+                        existingKeys.add(key);
+                    } catch (Exception ex) {
+                        // skip parse errors
+                    }
+                }
+            }
+        } catch (InterruptedException | ExecutionException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private boolean isMedicineActiveOn(Map<String, Object> activePeriod, LocalDate date) {
+        if (activePeriod == null) return true;
+        try {
+            Object s = activePeriod.get("startDate");
+            Object e = activePeriod.get("endDate");
+            LocalDate start = (s instanceof String) ? LocalDate.parse((String) s) : null;
+            LocalDate end = (e instanceof String) ? LocalDate.parse((String) e) : null;
+            if (start != null && date.isBefore(start)) return false;
+            if (end != null && date.isAfter(end)) return false;
+            return true;
+        } catch (Exception ex) {
+            return true;
+        }
+    }
+
+    /* ===========================
+       Update statuses & missed logging (grouped notifications)
+       =========================== */
+
+    private void updateStatusesForToday(DocumentReference todayRef) {
+        Firestore db = FirestoreService.getFirestore();
+        try {
+            QuerySnapshot itemsSnap = todayRef.collection("items").get().get();
+            LocalDateTime now = LocalDateTime.now();
+            List<ApiUpdate> batchUpdates = new ArrayList<>();
+
+            // collect missed items to notify
+            List<ScheduleItem> toNotifyMissed = new ArrayList<>();
+
+            for (DocumentSnapshot d : itemsSnap.getDocuments()) {
+                ScheduleItem s = ScheduleItem.fromSnapshot(d);
+                if (s.baseTimestamp == null) continue;
+
+                String current = s.status;
+                if ("taken".equals(current) || "missed".equals(current)) continue;
+
+                LocalDateTime base = s.baseTimestamp;
+                LocalDateTime snoozeEnd = base.plusMinutes(30);
+
+                if (now.isBefore(base)) {
+                    if (!"hasnt_arrived".equals(current)) {
+                        batchUpdates.add(new ApiUpdate(d.getReference(), Map.of("status", "hasnt_arrived")));
+                    }
+                } else if (!now.isBefore(base) && now.isBefore(snoozeEnd)) {
+                    if (!"in_snooze_duration".equals(current)) {
+                        batchUpdates.add(new ApiUpdate(d.getReference(), Map.of("status", "in_snooze_duration")));
+                    }
+                } else {
+                    // mark missed and collect
+                    toNotifyMissed.add(s);
+                    markItemMissedAndLog(d.getReference(), s, db);
+                }
+            }
+
+            for (ApiUpdate up : batchUpdates) {
+                try { up.ref.update(up.data).get(); } catch (Exception ex) { ex.printStackTrace(); }
+            }
+
+            // send grouped notification once for all missed items
+            if (!toNotifyMissed.isEmpty()) {
+                notifyCaretakersAboutMissedDoses(toNotifyMissed);
+            }
+        } catch (InterruptedException | ExecutionException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private static class ApiUpdate {
+        final DocumentReference ref;
+        final Map<String, Object> data;
+        ApiUpdate(DocumentReference r, Map<String, Object> d) { ref = r; data = d; }
+    }
+
+    private void markItemMissedAndLog(DocumentReference itemRef, ScheduleItem s, Firestore db) {
+        try {
+            Map<String, Object> upd = new HashMap<>();
+            upd.put("status", "missed");
+            upd.put("missedLoggedAt", Timestamp.now());
+            itemRef.update(upd).get();
+
+            CollectionReference missedCol = db.collection("users").document(elderId).collection("missed_doses");
+            Map<String, Object> log = new HashMap<>();
+            log.put("medicineId", s.medicineId);
+            log.put("name", s.name);
+            log.put("type", s.type);
+            log.put("amount", s.amount);
+            if (s.baseTimestamp != null) {
+                Instant inst = s.baseTimestamp.atZone(ZoneId.systemDefault()).toInstant();
+                com.google.cloud.Timestamp missedDoseTs = com.google.cloud.Timestamp.ofTimeSecondsAndNanos(inst.getEpochSecond(), inst.getNano());
+                log.put("missedDoseTime", missedDoseTs);
+            } else {
+                log.put("missedDoseTime", Timestamp.now());
+            }
+            log.put("loggedAt", Timestamp.now());
+            missedCol.document().set(log).get();
+        } catch (InterruptedException | ExecutionException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    /**
+     * Notify caretakers with ONE grouped email describing the provided missed items.
+     */
+    private void notifyCaretakersAboutMissedDoses(List<ScheduleItem> missedItems) {
+        if (missedItems == null || missedItems.isEmpty()) return;
+
+        bgExecutor.submit(() -> {
+            try {
+                Firestore db = FirestoreService.getFirestore();
+                CollectionReference usersCol = db.collection("users");
+
+                // gather caretaker emails
+                List<String> caretakerEmails = new ArrayList<>();
+                QuerySnapshot caretakersSnapshot = usersCol
+                        .whereEqualTo("role", "caretaker")
+                        .whereEqualTo("elderId", elderId)
+                        .get()
+                        .get();
+
+                for (QueryDocumentSnapshot doc : caretakersSnapshot.getDocuments()) {
+                    String email = doc.getString("email");
+                    if (email != null && !email.isEmpty()) caretakerEmails.add(email);
+                }
+
+                if (caretakerEmails.isEmpty()) {
+                    // fallback to elder.caretakers list
+                    DocumentSnapshot elderSnap = usersCol.document(elderId).get().get();
+                    Object caretakersField = elderSnap.get("caretakers");
+                    if (caretakersField instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<String> caretakerIds = (List<String>) caretakersField;
+                        for (String cid : caretakerIds) {
+                            try {
+                                DocumentSnapshot caretDocSnap = usersCol.document(cid).get().get();
+                                if (caretDocSnap != null && caretDocSnap.exists()) {
+                                    String e = caretDocSnap.getString("email");
+                                    if (e != null && !e.isEmpty()) caretakerEmails.add(e);
+                                }
+                            } catch (InterruptedException | ExecutionException ex) { ex.printStackTrace(); }
+                        }
+                    }
+                }
+
+                if (caretakerEmails.isEmpty()) {
+                    System.out.println("No caretakers found to notify for elder: " + elderId);
+                    return;
+                }
+
+                // Group missed items by scheduled base datetime (yyyy-MM-dd HH:mm)
+                Map<String, List<String>> grouped = new HashMap<>();
+                DateTimeFormatter keyFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+                for (ScheduleItem si : missedItems) {
+                    String key;
+                    if (si.baseTimestamp != null) {
+                        key = si.baseTimestamp.format(keyFmt);
+                    } else {
+                        String time = (si.time != null) ? si.time : "unknown time";
+                        key = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE) + " " + time;
+                    }
+
+                    String desc = (si.name == null ? "(unknown)" : si.name) + " — " + (si.amount == null ? "" : si.amount);
+                    grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(desc);
+                }
+
+                EmailService.sendMissedDosesEmail(elderUsername == null ? "Elder" : elderUsername, caretakerEmails, grouped);
+
+            } catch (InterruptedException | ExecutionException ex) {
+                ex.printStackTrace();
+            }
+        });
+    }
+
+    /* ===========================
+       Load & schedule timer
+       =========================== */
+
+    private void loadTodayItemsAndStartTimer(DocumentReference todayRef) {
+        bgExecutor.submit(() -> {
+            try {
+                QuerySnapshot itemsSnap = todayRef.collection("items").get().get();
+                List<ScheduleItem> items = new ArrayList<>();
+                for (DocumentSnapshot d : itemsSnap.getDocuments()) {
+                    items.add(ScheduleItem.fromSnapshot(d));
+                }
+
+                List<ScheduleItem> processed = computeDedupedAndEffectiveItems(items);
+
+                Platform.runLater(() -> {
+                    scheduleNextImmediateDoseFromItems(processed);
+                });
+            } catch (InterruptedException | ExecutionException ex) {
+                ex.printStackTrace();
+            }
+        });
+    }
+
+    private void scheduleNextImmediateDoseFromItems(List<ScheduleItem> items) {
+        LocalDateTime now = LocalDateTime.now();
+
+        TreeSet<LocalDateTime> candidateBases = new TreeSet<>();
+        Map<LocalDateTime, List<ScheduleItem>> byBase = new HashMap<>();
+
+        for (ScheduleItem it : items) {
+            if (it.baseTimestamp == null) continue;
+            if ("taken".equals(it.status) || "missed".equals(it.status)) continue;
+
+            String eff = (it.effectiveStatus != null) ? it.effectiveStatus : computeEffectiveStatus(it, now);
+            if ("missed".equals(eff) || "taken".equals(eff)) continue;
+
+            LocalDateTime base = it.baseTimestamp;
+            if (now.isBefore(base) || (!now.isBefore(base) && now.isBefore(base.plusMinutes(30)))) {
+                candidateBases.add(base);
+                byBase.computeIfAbsent(base, k -> new ArrayList<>()).add(it);
+            }
+        }
+
+        if (candidateBases.isEmpty()) {
+            synchronized (lock) {
+                currentMode = Mode.IDLE;
+                currentDueItems = new ArrayList<>();
+                nextDoseDateTime = null;
+                initialWindowSeconds = 0;
+            }
+            stopTimelineAndShowIdle();
+            Platform.runLater(this::updateMedsUI);
+            setConfirmButtonVisible(false, null);
+            return;
+        }
+
+        LocalDateTime earliest = candidateBases.first();
+        List<ScheduleItem> group = byBase.getOrDefault(earliest, Collections.emptyList());
+        LocalDateTime base = earliest;
+        LocalDateTime snoozeEnd = base.plusMinutes(30);
+
+        Mode newMode;
+        LocalDateTime target;
+        long initialSecs;
+        if (!now.isBefore(base) && now.isBefore(snoozeEnd)) {
+            newMode = Mode.SNOOZE;
+            target = snoozeEnd;
+            initialSecs = Math.max(1L, java.time.Duration.between(base, snoozeEnd).getSeconds());
+        } else {
+            newMode = Mode.PRE_DOSE;
+            target = base;
+            Instant nowInst = Instant.now();
+            Instant targetInst = base.atZone(ZoneId.systemDefault()).toInstant();
+            long secs = java.time.Duration.between(nowInst, targetInst).getSeconds();
+            if (secs < 0) secs = 0;
+            initialSecs = Math.max(1L, secs);
+        }
+
+        List<ScheduleItem> filteredGroup = new ArrayList<>();
+        for (ScheduleItem si : group) {
+            if (!"taken".equals(si.status) && !"missed".equals(si.status)) filteredGroup.add(si);
+        }
+
+        synchronized (lock) {
+            currentMode = newMode;
+            currentDueItems = filteredGroup;
+            nextDoseDateTime = target;
+            initialWindowSeconds = initialSecs;
+        }
+
+        ensureTimerViewPresent();
+        startCountdownTimeline();
+
+        if (newMode == Mode.SNOOZE) {
+            setConfirmButtonVisible(true, base);
+        } else {
+            setConfirmButtonVisible(false, null);
+        }
+
+        Platform.runLater(this::updateMedsUI);
+    }
+
+    private void ensureTimerViewPresent() {
+        if (timerHost == null) return;
+        if (timerView == null) {
+            timerView = new TimerController();
+            timerView.setCanvasSize(340, 340);
+            timerHost.getChildren().clear();
+            timerHost.getChildren().add(timerView);
+        }
+    }
+
+    private void stopTimelineAndShowIdle() {
+        if (countdownTimeline != null) countdownTimeline.stop();
+        ensureTimerViewPresent();
+        if (timerView != null) timerView.update(0.0, 0L, false);
+        setConfirmButtonVisible(false, null);
+        // Leave alarm off when idle
+        stopAlarmIfNeeded();
+    }
+
+    private void startCountdownTimeline() {
+        if (countdownTimeline != null) countdownTimeline.stop();
+        countdownTimeline = new Timeline(
+                new KeyFrame(javafx.util.Duration.seconds(0), ev -> updateTimerUI()),
+                new KeyFrame(javafx.util.Duration.seconds(1))
+        );
+        countdownTimeline.setCycleCount(Timeline.INDEFINITE);
+        countdownTimeline.play();
+    }
+
+    /* ===========================
+       Timer tick and UI update
+       =========================== */
+
+    private void updateTimerUI() {
+        Mode mode;
+        List<ScheduleItem> dueItems;
+        LocalDateTime target;
+        long initialSecs;
+        synchronized (lock) {
+            mode = currentMode;
+            dueItems = new ArrayList<>(currentDueItems);
+            target = nextDoseDateTime;
+            initialSecs = initialWindowSeconds;
+        }
+
+        switch (mode) {
+            case IDLE:
+                stopTimelineAndShowIdle();
+                return;
+
+            case SNOOZE:
+                if (dueItems.isEmpty()) {
+                    ensureTodayScheduleAndProcess();
+                    return;
+                }
+                LocalDateTime base = dueItems.get(0).baseTimestamp;
+                if (base == null) {
+                    ensureTodayScheduleAndProcess();
+                    return;
+                }
+
+                LocalDateTime now = LocalDateTime.now();
+                long total = java.time.Duration.between(base, base.plusMinutes(30)).getSeconds();
+                long elapsed = java.time.Duration.between(base, now).getSeconds();
+                if (elapsed < 0) elapsed = 0;
+                if (elapsed > total) elapsed = total;
+
+                double progress = total <= 0 ? 1.0 : Math.min(1.0, Math.max(0.0, (double) elapsed / (double) total));
+                long rem = Math.max(0L, total - elapsed);
+
+                if (timerView != null) timerView.update(progress, rem, true);
+
+                setConfirmButtonVisible(true, base);
+
+                if (Platform.isFxApplicationThread()) {
+                    if (upcomingTitleLabel != null) upcomingTitleLabel.setText("Take these medicines now");
+                } else {
+                    Platform.runLater(() -> { if (upcomingTitleLabel != null) upcomingTitleLabel.setText("Take these medicines now"); });
+                }
+
+                long remainingSeconds = java.time.Duration.between(now, target).getSeconds();
+                if (remainingSeconds < 0) remainingSeconds = 0;
+
+                // ALARM logic: play when in one of the configured windows and alarm not playing
+                if (isInAlarmWindow(remainingSeconds)) {
+                    startAlarmIfNeeded();
+                } else {
+                    stopAlarmIfNeeded();
+                }
+
+                if (remainingSeconds <= 0) {
+                    // snooze expired: hide button for this group and mark missed
+                    setConfirmButtonVisible(false, base);
+
+                    // Ensure alarm stops when snooze expires
+                    stopAlarmIfNeeded();
+
+                    List<ScheduleItem> toMark = new ArrayList<>(dueItems);
+                    bgExecutor.submit(() -> {
+                        Firestore db = FirestoreService.getFirestore();
+                        List<ScheduleItem> newlyMarked = new ArrayList<>();
+                        for (ScheduleItem s : toMark) {
+                            try {
+                                DocumentSnapshot snap = s.docRef.get().get();
+                                String st = snap.contains("status") ? snap.getString("status") : null;
+                                if (st != null && ("taken".equals(st) || "missed".equals(st))) continue;
+                                markItemMissedAndLog(s.docRef, s, db);
+                                newlyMarked.add(s);
+                            } catch (InterruptedException | ExecutionException ignore) {}
+                        }
+
+                        if (!newlyMarked.isEmpty()) {
+                            notifyCaretakersAboutMissedDoses(newlyMarked);
+                        }
+
+                        Platform.runLater(() -> {
+                            ensureTodayScheduleAndProcess();
+                        });
+                    });
+                }
+                return;
+
+            case PRE_DOSE:
+                // Ensure alarm is off in pre-dose
+                stopAlarmIfNeeded();
+
+                if (target == null) {
+                    ensureTodayScheduleAndProcess();
+                    return;
+                }
+                LocalDateTime now2 = LocalDateTime.now();
+                long remaining = java.time.Duration.between(now2, target).getSeconds();
+                if (remaining <= 0) {
+                    ensureTodayScheduleAndProcess();
+                    return;
+                }
+                long total2 = initialSecs > 0 ? initialSecs : remaining;
+                double prog2 = total2 <= 0 ? 1.0 : Math.min(1.0, Math.max(0.0, (double) (total2 - remaining) / (double) total2));
+                if (timerView != null) timerView.update(prog2, remaining, false);
+
+                if (Platform.isFxApplicationThread()) {
+                    if (upcomingTitleLabel != null) upcomingTitleLabel.setText("Upcoming Medicines");
+                } else {
+                    Platform.runLater(() -> { if (upcomingTitleLabel != null) upcomingTitleLabel.setText("Upcoming Medicines"); });
+                }
+                setConfirmButtonVisible(false, null);
+                return;
+        }
+    }
+
+    /* ===========================
+       User actions
+       =========================== */
+
+    @javafx.fxml.FXML
+    private void handleConfirmIntake() {
+        LocalDateTime confirmedGroupBase;
+        synchronized (lock) {
+            if (currentMode != Mode.SNOOZE) return;
+            confirmedGroupBase = currentDueItems.isEmpty() ? null : currentDueItems.get(0).baseTimestamp;
+            currentMode = Mode.IDLE;
+        }
+
+        setConfirmButtonVisible(false, confirmedGroupBase);
+        stopTimelineAndShowIdle();
+
+        // When user confirms, stop the alarm immediately
+        stopAlarmIfNeeded();
+
+        List<ScheduleItem> toMark;
+        synchronized (lock) { toMark = new ArrayList<>(currentDueItems); }
+
+        bgExecutor.submit(() -> {
+            Firestore db = FirestoreService.getFirestore();
+            String todayId = LocalDate.now().format(dateIdFmt);
+            DocumentReference todayRef = db.collection("users").document(elderId)
+                    .collection("schedules").document(todayId);
+
+            Set<String> updatedItemIds = new HashSet<>();
+
+            // 1) Mark items that were in the confirmed group (the items we captured)
+            for (ScheduleItem it : toMark) {
+                try {
+                    it.docRef.update("status", "taken", "takenAt", Timestamp.now()).get();
+                    updatedItemIds.add(it.docRef.getId());
+                    if (it.medicineRef != null) {
+                        try { it.medicineRef.update("lastTaken", Timestamp.now()).get(); } catch (Exception ex) { /* ignore */ }
+                    }
+                } catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            // 2) Mark any other items that share the same baseTimestamp as taken as well.
+            //    This prevents duplicates with the same scheduled time from remaining.
+            try {
+                if (confirmedGroupBase != null) {
+                    Instant baseInst = confirmedGroupBase.atZone(ZoneId.systemDefault()).toInstant();
+                    com.google.cloud.Timestamp groupTs = com.google.cloud.Timestamp.ofTimeSecondsAndNanos(baseInst.getEpochSecond(), baseInst.getNano());
+
+                    QuerySnapshot groupSnap = todayRef.collection("items")
+                            .whereEqualTo("baseTimestamp", groupTs)
+                            .get()
+                            .get();
+
+                    for (DocumentSnapshot d : groupSnap.getDocuments()) {
+                        String docId = d.getId();
+                        if (updatedItemIds.contains(docId)) continue;
+                        String st = d.contains("status") ? d.getString("status") : null;
+                        if (st != null && ("taken".equals(st) || "missed".equals(st))) continue;
+                        try {
+                            d.getReference().update("status", "taken", "takenAt", Timestamp.now()).get();
+                            updatedItemIds.add(docId);
+                            DocumentReference medRef = d.get("medicineRef", DocumentReference.class);
+                            if (medRef != null) {
+                                try { medRef.update("lastTaken", Timestamp.now()).get(); } catch (Exception ex) { /* ignore */ }
+                            }
+                        } catch (InterruptedException | ExecutionException ex) {
+                            ex.printStackTrace();
+                        }
+                    }
+                } else {
+                    // fallback to previous behavior (older code) in case group base is null
+                    QuerySnapshot snoozing = todayRef.collection("items")
+                            .whereEqualTo("status", "in_snooze_duration")
+                            .get().get();
+                    for (DocumentSnapshot d : snoozing.getDocuments()) {
+                        String docId = d.getId();
+                        if (updatedItemIds.contains(docId)) continue;
+                        try {
+                            d.getReference().update("status", "taken", "takenAt", Timestamp.now()).get();
+                            updatedItemIds.add(docId);
+                            DocumentReference medRef = d.get("medicineRef", DocumentReference.class);
+                            if (medRef != null) {
+                                try { medRef.update("lastTaken", Timestamp.now()).get(); } catch (Exception ex) { /* ignore */ }
+                            }
+                        } catch (InterruptedException | ExecutionException ex) {
+                            ex.printStackTrace();
+                        }
+                    }
+                }
+            } catch (InterruptedException | ExecutionException ex) {
+                ex.printStackTrace();
+            }
+
+            Platform.runLater(() -> {
+                synchronized (lock) { currentMode = Mode.IDLE; }
+                ensureTodayScheduleAndProcess();
+            });
+        });
+    }
+
+    @javafx.fxml.FXML
     private void handleHelpRequest() {
         if (elderId == null) return;
         Firestore db = FirestoreService.getFirestore();
         CollectionReference users = db.collection("users");
 
-        new Thread(() -> {
+        bgExecutor.submit(() -> {
             try {
                 QuerySnapshot caretakersSnapshot = users
                         .whereEqualTo("role", "caretaker")
@@ -174,17 +1220,20 @@ public class ElderDashboardController {
                 }
 
             } catch (InterruptedException | ExecutionException e) { e.printStackTrace(); }
-        }).start();
+        });
     }
 
-    @FXML
+    @javafx.fxml.FXML
     private void handleViewMedicine() { switchScene("/fxml/medicine_schedule.fxml"); }
 
-    @FXML
+    @javafx.fxml.FXML
     private void handleViewVitals() { switchScene("/fxml/vitals.fxml"); }
 
-    @FXML
-    private void handleLogout() { switchScene("/fxml/login.fxml"); }
+    @javafx.fxml.FXML
+    private void handleLogout() {
+        dispose();
+        switchScene("/fxml/login.fxml");
+    }
 
     private void switchScene(String fxmlPath) {
         try {
@@ -197,222 +1246,6 @@ public class ElderDashboardController {
         } catch (IOException e) { e.printStackTrace(); }
     }
 
-    /* ==========================
-       Loading medicines & scheduling next dose (TODAY)
-       ========================== */
-
-    private void loadMedicinesAndStartTimer() {
-        if (elderId == null) return;
-        Firestore db = FirestoreService.getFirestore();
-        CollectionReference medsCol = db.collection("users").document(elderId).collection("medicines");
-
-        new Thread(() -> {
-            try {
-                QuerySnapshot medsSnap = medsCol.get().get();
-                List<MedicineSchedule> meds = new ArrayList<>();
-                for (DocumentSnapshot d : medsSnap.getDocuments()) {
-                    MedicineSchedule m = MedicineSchedule.fromFirestore(d);
-                    if (m.isActiveOn(LocalDate.now())) meds.add(m);
-                }
-                Platform.runLater(() -> {
-                    displayFullMedicinesList(meds);
-                    scheduleNextImmediateDoseToday(meds);
-                });
-            } catch (InterruptedException | ExecutionException e) {
-                e.printStackTrace();
-            }
-        }).start();
-    }
-
-    private void displayFullMedicinesList(List<MedicineSchedule> meds) {
-        if (medsListBox == null) return;
-        medsListBox.getChildren().clear();
-        if (meds.isEmpty()) {
-            medsListBox.getChildren().add(new Label("No medicines found for today."));
-            return;
-        }
-        for (MedicineSchedule m : meds) {
-            Label l = new Label(m.name + " — " + (m.amount == null ? "" : m.amount));
-            l.setStyle("-fx-font-size: 14px; -fx-padding: 6;");
-            medsListBox.getChildren().add(l);
-        }
-    }
-
-    private void scheduleNextImmediateDoseToday(List<MedicineSchedule> meds) {
-        inIntakeWindow = false;
-        snoozesUsed = 0;
-        if (confirmIntakeButton != null) confirmIntakeButton.setVisible(false);
-        if (intakeStatusLabel != null) intakeStatusLabel.setText("");
-
-        LocalDate today = LocalDate.now();
-        LocalTime nowTime = LocalTime.now();
-        TreeSet<LocalTime> candidateTimes = new TreeSet<>();
-
-        for (MedicineSchedule m : meds) {
-            if (m.times != null) {
-                for (String ts : m.times) {
-                    try {
-                        LocalTime lt = LocalTime.parse(ts);
-                        if (!lt.isBefore(nowTime)) candidateTimes.add(lt);
-                    } catch (Exception ignored) {}
-                }
-            }
-        }
-
-        if (candidateTimes.isEmpty()) {
-            nextDoseDateTime = null;
-            initialWindowSeconds = 0L;
-            currentDueMedicines = new ArrayList<>();
-            if (nextDoseLabel != null) nextDoseLabel.setText("No upcoming doses today.");
-            ensureTimerViewPresent();
-            if (timerView != null) timerView.update(0.0, 0L, false);
-            if (countdownTimeline != null) countdownTimeline.stop();
-            return;
-        }
-
-        LocalTime earliest = candidateTimes.first();
-        nextDoseDateTime = LocalDateTime.of(today, earliest);
-
-        Instant nowInstant = Instant.now();
-        Instant targetInstant = nextDoseDateTime.atZone(ZoneId.systemDefault()).toInstant();
-        long secs = Duration.between(nowInstant, targetInstant).getSeconds();
-        if (secs < 0) secs = 0;
-        initialWindowSeconds = Math.max(1L, secs);
-
-        // upcoming meds at next dose time
-        String earliestStr = earliest.toString();
-        List<MedicineSchedule> upcoming = new ArrayList<>();
-        for (MedicineSchedule m : meds) {
-            if (m.times != null && m.times.contains(earliestStr)) upcoming.add(m);
-        }
-        currentDueMedicines = upcoming;
-
-        updateUpcomingUI();
-        ensureTimerViewPresent();
-        startCountdownTimeline();
-    }
-
-    private void updateUpcomingUI() {
-        if (nextDoseLabel != null) {
-            if (nextDoseDateTime != null) {
-                nextDoseLabel.setText("Next dose at: " + nextDoseDateTime.format(labelDateTimeFmt));
-            } else {
-                nextDoseLabel.setText("No upcoming doses today.");
-            }
-        }
-
-        if (medsListBox == null) return;
-        medsListBox.getChildren().clear();
-        if (currentDueMedicines == null || currentDueMedicines.isEmpty()) {
-            medsListBox.getChildren().add(new Label("No medicines in upcoming group."));
-            return;
-        }
-        for (MedicineSchedule m : currentDueMedicines) {
-            Label l = new Label("• " + m.name + " — " + (m.amount == null ? "" : m.amount));
-            l.setStyle("-fx-font-size: 16px; -fx-padding: 6;");
-            medsListBox.getChildren().add(l);
-        }
-    }
-
-    private void ensureTimerViewPresent() {
-        if (timerHost == null) return;
-        if (timerView == null) {
-            timerView = new TimerController();
-            timerView.setCanvasSize(340, 340);
-            timerHost.getChildren().clear();
-            timerHost.getChildren().add(timerView);
-        }
-    }
-
-    private void startCountdownTimeline() {
-        if (countdownTimeline != null) countdownTimeline.stop();
-
-        countdownTimeline = new Timeline(
-                new KeyFrame(javafx.util.Duration.seconds(0), ev -> updateTimerUI()),
-                new KeyFrame(javafx.util.Duration.seconds(1))
-        );
-        countdownTimeline.setCycleCount(Timeline.INDEFINITE);
-        countdownTimeline.play();
-    }
-
-    private void updateTimerUI() {
-        if (inIntakeWindow) {
-            intakeRemainingSeconds = Math.max(0L, intakeRemainingSeconds - 1L);
-            double progress = 1.0 - ((double) intakeRemainingSeconds / (double) INTAKE_WINDOW_SECONDS);
-            if (timerView != null) timerView.update(progress, intakeRemainingSeconds, true);
-
-            if (intakeStatusLabel != null) {
-                intakeStatusLabel.setText("Intake window — snoozes used: " + snoozesUsed + " / " + maxSnoozesAllowed);
-            }
-
-            if (intakeRemainingSeconds <= 0) {
-                if (snoozesUsed < maxSnoozesAllowed) {
-                    snoozesUsed++;
-                    intakeRemainingSeconds = INTAKE_WINDOW_SECONDS;
-                    if (confirmIntakeButton != null) confirmIntakeButton.setVisible(true);
-                    return;
-                } else {
-                    performAutoSOS("Snoozes exhausted for this group.");
-                    exitIntakeAndReset();
-                    return;
-                }
-            }
-            return;
-        }
-
-        if (nextDoseDateTime == null) {
-            if (timerView != null) timerView.update(0.0, 0L, false);
-            if (nextDoseLabel != null) nextDoseLabel.setText("No upcoming doses today.");
-            if (countdownTimeline != null) countdownTimeline.stop();
-            return;
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        long remainingSeconds = Duration.between(now, nextDoseDateTime).getSeconds();
-        if (remainingSeconds <= 0) {
-            enterIntakeWindow();
-            return;
-        }
-
-        long total = initialWindowSeconds > 0 ? initialWindowSeconds : remainingSeconds;
-        double progress = total <= 0 ? 1.0 : Math.min(1.0, Math.max(0.0, (double) (total - remainingSeconds) / (double) total));
-        if (timerView != null) timerView.update(progress, remainingSeconds, false);
-    }
-
-    private void enterIntakeWindow() {
-        inIntakeWindow = true;
-        intakeRemainingSeconds = INTAKE_WINDOW_SECONDS;
-        snoozesUsed = 0;
-        if (confirmIntakeButton != null) confirmIntakeButton.setVisible(true);
-        if (intakeStatusLabel != null) {
-            intakeStatusLabel.setText("Intake window started. Snoozes allowed: " + maxSnoozesAllowed);
-        }
-    }
-
-    private void exitIntakeAndReset() {
-        inIntakeWindow = false;
-        intakeRemainingSeconds = 0;
-        snoozesUsed = 0;
-        if (confirmIntakeButton != null) confirmIntakeButton.setVisible(false);
-        if (intakeStatusLabel != null) intakeStatusLabel.setText("");
-        loadMedicinesAndStartTimer();
-    }
-
-    @FXML
-    private void handleConfirmIntake() {
-        if (!inIntakeWindow) return;
-        if (currentDueMedicines == null || currentDueMedicines.isEmpty()) return;
-
-        Firestore db = FirestoreService.getFirestore();
-        for (MedicineSchedule m : currentDueMedicines) {
-            if (m.docRef != null) {
-                m.docRef.update("lastTaken", Timestamp.now());
-            }
-        }
-
-        exitIntakeAndReset();
-    }
-
     private void performAutoSOS(String reason) {
         Platform.runLater(() -> {
             handleHelpRequest();
@@ -422,52 +1255,175 @@ public class ElderDashboardController {
         });
     }
 
-    /* ==========================
-       Helper: MedicineSchedule (minimal, schema-aware)
-       ========================== */
-
-    private static class MedicineSchedule {
-        String id;
-        String name;
-        String amount;
-        List<String> times; // "HH:mm"
-        Map<String, Object> activePeriod;
-        DocumentReference docRef;
-
-        static MedicineSchedule fromFirestore(DocumentSnapshot d) {
-            MedicineSchedule m = new MedicineSchedule();
-            m.id = d.getId();
-            m.name = d.getString("name");
-            m.amount = d.getString("amount");
-            Object t = d.get("times");
-            if (t instanceof List) {
-                @SuppressWarnings("unchecked")
-                List<String> list = (List<String>) t;
-                m.times = new ArrayList<>(list);
-            } else {
-                m.times = new ArrayList<>();
+    /* ===========================
+       Pairing show/copy action
+       =========================== */
+    @javafx.fxml.FXML
+    private void handleShowPairingCode() {
+        if (pairingCode == null || pairingCode.isEmpty()) {
+            if (copyToastLabel != null) {
+                copyToastLabel.setText("Pairing unavailable");
+                copyToastLabel.setVisible(true);
+                PauseTransition pt = new PauseTransition(Duration.seconds(1.5));
+                pt.setOnFinished(ev -> copyToastLabel.setVisible(false));
+                pt.play();
             }
-            @SuppressWarnings("unchecked")
-            Map<String, Object> ap = (Map<String, Object>) d.get("activePeriod");
-            m.activePeriod = ap;
-
-            m.docRef = d.getReference();
-            return m;
+            return;
         }
 
-        boolean isActiveOn(LocalDate date) {
-            if (activePeriod == null) return true;
-            try {
-                Object s = activePeriod.get("startDate");
-                Object e = activePeriod.get("endDate");
-                LocalDate start = (s instanceof String) ? LocalDate.parse((String) s) : null;
-                LocalDate end = (e instanceof String) ? LocalDate.parse((String) e) : null;
-                if (start != null && date.isBefore(start)) return false;
-                if (end != null && date.isAfter(end)) return false;
-                return true;
-            } catch (Exception ex) {
-                return true;
+        Clipboard cb = Clipboard.getSystemClipboard();
+        ClipboardContent content = new ClipboardContent();
+        content.putString(pairingCode);
+        cb.setContent(content);
+
+        if (copyToastLabel != null) {
+            copyToastLabel.setText("Pairing code copied");
+            copyToastLabel.setVisible(true);
+            PauseTransition pt = new PauseTransition(Duration.seconds(1.6));
+            pt.setOnFinished(ev -> copyToastLabel.setVisible(false));
+            pt.play();
+        }
+    }
+
+    /* ===========================
+       UI helpers & placeholder cards
+       =========================== */
+
+    private void updateMedsUI() {
+        if (medsListBox == null) return;
+        medsListBox.getChildren().clear();
+
+        Mode mode;
+        List<ScheduleItem> items;
+        synchronized (lock) {
+            mode = currentMode;
+            items = new ArrayList<>(currentDueItems);
+        }
+
+        if (mode != Mode.SNOOZE) setConfirmButtonVisible(false, null);
+
+        if (mode == Mode.SNOOZE) {
+            if (upcomingTitleLabel != null) upcomingTitleLabel.setText("Take these medicines now");
+        } else {
+            if (upcomingTitleLabel != null) upcomingTitleLabel.setText("Upcoming Medicines");
+        }
+
+        // If there are no items at all, show a center message rather than placeholders
+        if (items == null || items.isEmpty()) {
+            medsListBox.setAlignment(Pos.CENTER);
+            Label noMoreLbl = new Label("No more medicines scheduled for today");
+            noMoreLbl.setWrapText(true);
+            noMoreLbl.setStyle("-fx-font-size:14; -fx-text-fill:#666; -fx-padding:12;");
+            medsListBox.getChildren().add(noMoreLbl);
+            return;
+        }
+
+        List<ScheduleItem> show = new ArrayList<>();
+        for (ScheduleItem s : items) {
+            if (s.status != null && ("taken".equals(s.status) || "missed".equals(s.status))) continue;
+            show.add(s);
+        }
+
+        if (show.isEmpty()) {
+            medsListBox.setAlignment(Pos.CENTER);
+            Label noMoreLbl = new Label("No more medicines scheduled for today");
+            noMoreLbl.setWrapText(true);
+            noMoreLbl.setStyle("-fx-font-size:14; -fx-text-fill:#666; -fx-padding:12;");
+            medsListBox.getChildren().add(noMoreLbl);
+            return;
+        }
+
+        // We have items to show — make sure alignment returns to top-left
+        medsListBox.setAlignment(Pos.TOP_LEFT);
+
+        for (ScheduleItem s : show) {
+            HBox card = new HBox(8);
+            card.setStyle("-fx-padding:8; -fx-background-color: white; -fx-background-radius:8; -fx-border-radius:8; -fx-border-color:#e6e9ef;");
+            card.setPrefHeight(56);
+
+            VBox meta = new VBox(2);
+            Label nameLbl = new Label(s.name == null ? "(unknown)" : s.name);
+            nameLbl.setStyle("-fx-font-weight:bold; -fx-font-size:13;");
+            Label amountLbl = new Label(s.amount == null ? "" : s.amount);
+            amountLbl.setStyle("-fx-font-size:12; -fx-text-fill:#666;");
+
+            meta.getChildren().addAll(nameLbl, amountLbl);
+            HBox.setHgrow(meta, javafx.scene.layout.Priority.ALWAYS);
+
+            Region spacer = new Region();
+            javafx.scene.layout.HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+
+            String timeText = s.time != null ? s.time : (s.baseTimestamp != null ? s.baseTimestamp.toLocalTime().toString() : "");
+            Label timeLbl = new Label(timeText);
+            timeLbl.setStyle("-fx-font-size:13; -fx-text-fill:#333;");
+
+            card.getChildren().addAll(meta, spacer, timeLbl);
+            medsListBox.getChildren().add(card);
+        }
+    }
+
+    private javafx.scene.layout.Region createPlaceholderRegion(double height) {
+        javafx.scene.layout.Region r = new javafx.scene.layout.Region();
+        r.setPrefHeight(height);
+        r.setStyle("-fx-background-color: white; -fx-background-radius:8; -fx-border-color:#e6e9ef; -fx-border-radius:8; -fx-padding:6;");
+        return r;
+    }
+
+    /* ===========================
+       ScheduleItem helper
+       =========================== */
+
+    private static class ScheduleItem {
+        String id;
+        String medicineId;
+        DocumentReference medicineRef;
+        String name;
+        String type;
+        String amount;
+        String time; // "HH:mm"
+        LocalDateTime baseTimestamp;
+        String status;
+        String effectiveStatus;
+        DocumentReference docRef;
+
+        static ScheduleItem fromSnapshot(DocumentSnapshot d) {
+            ScheduleItem s = new ScheduleItem();
+            s.id = d.getId();
+            s.medicineId = d.getString("medicineId");
+            s.medicineRef = d.get("medicineRef", DocumentReference.class);
+            s.name = d.getString("name");
+            s.type = d.getString("type");
+            s.amount = d.getString("amount");
+            s.time = d.getString("time");
+            s.status = d.getString("status");
+            s.docRef = d.getReference();
+
+            Object baseO = d.get("baseTimestamp");
+            if (baseO instanceof com.google.cloud.Timestamp) {
+                com.google.cloud.Timestamp ts = (com.google.cloud.Timestamp) baseO;
+                Instant inst = Instant.ofEpochSecond(ts.getSeconds(), ts.getNanos());
+                s.baseTimestamp = LocalDateTime.ofInstant(inst, ZoneId.systemDefault());
+            } else {
+                s.baseTimestamp = null;
             }
+            return s;
+        }
+    }
+
+    /* ===========================
+       Dispose / cleanup
+       =========================== */
+
+    public void dispose() {
+        try {
+            teardownRealtimeListeners();
+            if (scheduler != null && !scheduler.isShutdown()) scheduler.shutdownNow();
+            if (bgExecutor != null && !bgExecutor.isShutdown()) bgExecutor.shutdownNow();
+            if (countdownTimeline != null) countdownTimeline.stop();
+            // stop and release alarm player if any
+            stopAlarmIfNeeded();
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
     }
 }

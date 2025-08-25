@@ -27,6 +27,10 @@
                     onAction="#handleMedicineHistory"
                     style="-fx-font-size: 14px;"/>
 
+            <Button text="💊 Check Dose Intake History"
+                    onAction="#handleDoseIntakeHistory"
+                    style="-fx-font-size: 14px;"/>
+
             <Button text="✏️ Edit Current Medicine Doses"
                     onAction="#handleEditCurrentDoses"
                     style="-fx-font-size: 14px;"/>

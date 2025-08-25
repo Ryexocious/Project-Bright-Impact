@@ -29,6 +29,11 @@ public class CaretakerDashboardController {
     }
 
     @FXML
+    private void handleDoseIntakeHistory() {
+        switchScene("/fxml/dose_intake_history.fxml");
+    }
+
+    @FXML
     private void handleEditCurrentDoses() {
         switchScene("/fxml/edit_medicine_doses.fxml");
     }

@@ -1,119 +1,27 @@
-/* Elder Dashboard CSS - JavaFX-compatible and cleaned */
+/* elderdash.css - cleaned/minimal for current FXML */
 
 /* Main Container */
 .main-container {
     -fx-background-color: #f8f9fa;
-    /* Use a reasonable default height (JavaFX doesn't support 100vh) */
     -fx-pref-height: 800;
 }
 
-/* Compact Welcome Section */
-.welcome-section-compact {
+/* Welcome card that stretches across to pairing card */
+.welcome-card-compact {
     -fx-background-color: white;
-    -fx-background-radius: 12;
-    -fx-padding: 15;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 8, 0, 0, 3);
-    -fx-min-width: 400;
-}
-
-.welcome-text-compact {
-    -fx-font-size: 24px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #2c3e50;
-}
-
-.current-date-compact {
-    -fx-font-size: 16px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #34495e;
-}
-
-.current-time-compact {
-    -fx-font-size: 18px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #3498db;
-}
-
-/* Compact Summary Section */
-.summary-section-compact {
-    -fx-background-color: white;
-    -fx-background-radius: 12;
-    -fx-padding: 15;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 8, 0, 0, 3);
-}
-
-.summary-card-compact {
-    -fx-background-color: #f8f9fa;
     -fx-background-radius: 10;
-    -fx-padding: 12;
-    -fx-min-width: 70;
-    -fx-border-color: #dee2e6;
+    -fx-padding: 12 16 12 16;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 8, 0, 0, 3);
+    -fx-border-color: #e6e9ef;
     -fx-border-radius: 10;
-    -fx-border-width: 1;
+    -fx-alignment: CENTER_LEFT;
 }
 
-.summary-icon {
-    -fx-font-size: 16px;
-}
-
-.summary-label-compact {
-    -fx-font-size: 12px;
-    -fx-text-fill: #6c757d;
-    -fx-font-weight: bold;
-}
-
-.summary-value-compact {
-    -fx-font-size: 24px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #28a745;
-}
-
-.summary-value-time-compact {
-    -fx-font-size: 16px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #007bff;
-}
-
-.summary-detail-compact {
-    -fx-font-size: 11px;
-    -fx-text-fill: #6c757d;
-}
-
-/* Compact Medicine Alert Banner */
-.medicine-alert-banner-compact {
-    -fx-background-color: #e74c3c;
-    -fx-background-radius: 10;
-    -fx-padding: 15;
-    -fx-effect: dropshadow(gaussian, rgba(231,76,60,0.30), 10, 0, 0, 3);
-}
-
-.alert-title-compact {
+/* Welcome text */
+.welcome-text-compact {
     -fx-font-size: 20px;
     -fx-font-weight: bold;
-    -fx-text-fill: white;
-}
-
-.alert-message-compact {
-    -fx-font-size: 16px;
-    -fx-text-fill: white;
-}
-
-.alert-take-button,
-.alert-snooze-button {
-    -fx-font-size: 14px;
-    -fx-font-weight: bold;
-    -fx-background-radius: 8;
-    -fx-padding: 8 16 8 16;
-}
-
-.alert-take-button {
-    -fx-background-color: #27ae60;
-    -fx-text-fill: white;
-}
-
-.alert-snooze-button {
-    -fx-background-color: #f39c12;
-    -fx-text-fill: white;
+    -fx-text-fill: #2c3e50;
 }
 
 /* Compact Upcoming Medicines Section */
@@ -131,98 +39,13 @@
     -fx-text-fill: #2c3e50;
 }
 
-.view-button-compact {
-    -fx-background-color: #3498db;
-    -fx-text-fill: white;
-    -fx-font-size: 12px;
-    -fx-font-weight: bold;
-    -fx-background-radius: 8;
-    -fx-padding: 6 12 6 12;
-}
-
-.upcoming-medicines-flow-compact {
-    -fx-max-height: 300;
-}
-
-/* Time-Based Medicine Groups */
-.medicine-time-group {
-    -fx-background-color: #ecf0f1;
-    -fx-background-radius: 12;
-    -fx-padding: 15;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 6, 0, 0, 2);
-    -fx-border-color: #bdc3c7;
-    -fx-border-radius: 12;
-    -fx-border-width: 1;
-}
-
-.time-group-header {
-    -fx-alignment: CENTER_LEFT;
-}
-
-.time-display {
-    -fx-background-color: white;
-    -fx-background-radius: 8;
-    -fx-padding: 12;
-    -fx-min-width: 120;
-    -fx-border-color: #3498db;
-    -fx-border-radius: 8;
-    -fx-border-width: 2;
-}
-
-.group-countdown-text {
-    -fx-font-size: 16px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #e67e22;
-}
-
-.group-scheduled-time {
-    -fx-font-size: 14px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #3498db;
-}
-
-.medicines-in-group {
-    -fx-background-color: white;
-    -fx-background-radius: 8;
-    -fx-padding: 12;
-    -fx-border-color: #95a5a6;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-}
-
-.medicine-count-text {
-    -fx-font-size: 14px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #2c3e50;
-}
-
-.medicine-names-text {
-    -fx-font-size: 16px;
-    -fx-text-fill: #34495e;
-    -fx-font-weight: normal;
-    -fx-wrap-text: true;
-}
-
-/* No Medicines Message */
-.no-medicines-card-compact {
-    -fx-background-color: #d5f4e6;
-    -fx-background-radius: 10;
-    -fx-padding: 20;
-}
-
-.no-medicines-text-compact {
-    -fx-font-size: 16px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #27ae60;
-}
-
 /* Actions Section (right column) */
 .actions-section {
     -fx-min-width: 450;
     -fx-max-width: 480;
 }
 
-/* Compact Navigation Section (used as card for the timer) */
+/* Compact Navigation Section (timer card) */
 .navigation-section-compact {
     -fx-background-color: white;
     -fx-background-radius: 12;
@@ -230,35 +53,45 @@
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 8, 0, 0, 3);
 }
 
-/* Navigation title */
-.nav-title-compact {
-    -fx-font-size: 16px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #495057;
-}
-
-/* Buttons in navigation area (kept generic) */
-.nav-button-primary-compact {
-    -fx-background-color: #007bff;
-    -fx-text-fill: white;
-    -fx-font-size: 12px;
-    -fx-font-weight: bold;
+/* Pairing card styles */
+.pairing-card-compact {
+    -fx-background-color: white;
     -fx-background-radius: 10;
-    -fx-min-width: 90;
-    -fx-min-height: 60;
     -fx-padding: 8;
+    -fx-border-color: #e6e9ef;
+    -fx-border-radius: 10;
+    -fx-min-width: 160;
+    -fx-alignment: CENTER;
+    -fx-spacing: 4;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.04), 6, 0, 0, 2);
 }
 
-/* Compact Help (emergency) */
-.help-section-compact {
-    -fx-background-color: #fff3cd;
-    -fx-background-radius: 12;
-    -fx-padding: 20;
-    -fx-border-color: #ffeaa7;
-    -fx-border-radius: 12;
-    -fx-border-width: 2;
+.pairing-label-compact {
+    -fx-font-size: 12px;
+    -fx-text-fill: #6c757d;
+    -fx-font-weight: bold;
 }
 
+.pairing-button-compact {
+    -fx-background-color: transparent;
+    -fx-text-fill: #2c3e50;
+    -fx-border-color: #3498db;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 6 10 6 10;
+    -fx-font-weight: bold;
+    -fx-font-size: 13px;
+}
+
+/* small transient toast under the pairing button */
+.pairing-toast-compact {
+    -fx-font-size: 11px;
+    -fx-text-fill: #27ae60;
+    -fx-padding: 4 6 0 6;
+    -fx-opacity: 0.95;
+}
+
+/* Emergency button */
 .emergency-button-compact {
     -fx-background-color: #dc3545;
     -fx-text-fill: white;
@@ -288,35 +121,11 @@
     -fx-padding: 8 20 8 20;
 }
 
-/* Urgent countdown styling for groups */
-.countdown-urgent .group-countdown-text {
-    -fx-text-fill: #e74c3c;
-}
-
-.countdown-soon .group-countdown-text {
-    -fx-text-fill: #f39c12;
-}
-
-.countdown-normal .group-countdown-text {
-    -fx-text-fill: #e67e22;
-}
-
-/* Animation classes for dynamic updates */
-.medicine-group-new {
-    -fx-effect: dropshadow(gaussian, rgba(46,204,113,0.40), 10, 0, 0, 3);
-    -fx-border-color: #2ecc71;
-}
-
-.medicine-group-due {
-    -fx-effect: dropshadow(gaussian, rgba(231,76,60,0.40), 10, 0, 0, 3);
-    -fx-border-color: #e74c3c;
-}
-
-/* High contrast tweaks */
-.high-contrast .medicine-time-group {
-    -fx-border-width: 2;
-}
-
-.high-contrast .summary-value-compact {
-    -fx-font-size: 28px;
+/* Placeholder card styling (used by createPlaceholderRegion) */
+.placeholder-card {
+    -fx-background-color: white;
+    -fx-background-radius: 8;
+    -fx-border-color: #e6e9ef;
+    -fx-border-radius: 8;
+    -fx-padding: 6;
 }

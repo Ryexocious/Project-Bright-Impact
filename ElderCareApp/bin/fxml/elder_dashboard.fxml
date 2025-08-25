@@ -18,15 +18,21 @@
         <Insets top="8" right="12" bottom="8" left="12"/>
     </padding>
 
-    <!-- Top Row: Welcome + Emergency on top-right -->
+    <!-- Top Row: Welcome (card) + Pairing + Emergency -->
     <HBox spacing="12" VBox.vgrow="NEVER" style="-fx-alignment: center-left;">
-        <VBox spacing="3" alignment="CENTER_LEFT" HBox.hgrow="ALWAYS">
+
+        <!-- Welcome card: stretches across available space up to the pairing card -->
+        <VBox spacing="3" alignment="CENTER_LEFT" HBox.hgrow="ALWAYS" styleClass="welcome-card-compact">
             <Label fx:id="welcomeLabel" text="Welcome, ..." styleClass="welcome-text-compact"/>
         </VBox>
 
-        <Region HBox.hgrow="ALWAYS"/>
+        <!-- Pairing card immediately left of emergency -->
+        <VBox spacing="4" styleClass="pairing-card-compact" alignment="CENTER">
+            <Label text="Pairing Code" styleClass="pairing-label-compact"/>
+            <Button fx:id="pairingCodeButton" text="Loading..." onAction="#handleShowPairingCode" styleClass="pairing-button-compact" disable="true"/>
+            <Label fx:id="copyToastLabel" text="Copied" styleClass="pairing-toast-compact" visible="false"/>
+        </VBox>
 
-        <!-- Emergency button top-right -->
         <Button fx:id="helpRequestButton" text="EMERGENCY HELP"
                 onAction="#handleHelpRequest"
                 styleClass="emergency-button-compact"/>
@@ -34,34 +40,26 @@
 
     <!-- Main Content Row -->
     <HBox spacing="12" VBox.vgrow="ALWAYS" style="-fx-alignment: top-center;">
-        <!-- Left: Upcoming Medicines (card) -->
+
+        <!-- Left: Upcoming Medicines Section -->
         <VBox spacing="8" styleClass="upcoming-medicines-section-compact" HBox.hgrow="ALWAYS" prefWidth="450.0">
-            <HBox spacing="5" alignment="CENTER_LEFT">
-                <Label text="Upcoming Medicines" styleClass="section-title-compact"/>
-                <Region HBox.hgrow="ALWAYS"/>
-                <Button fx:id="viewMedicineButton" text="View All Medicines" onAction="#handleViewMedicine"
-                        styleClass="view-button-compact"/>
-            </HBox>
+            <Label fx:id="upcomingTitleLabel" text="Upcoming Medicines" styleClass="section-title-compact"/>
 
-            <VBox fx:id="medsListBox" spacing="8" styleClass="upcoming-medicines-flow-compact" VBox.vgrow="ALWAYS">
-                <!-- medicine list populated by controller -->
-            </VBox>
-
-            <VBox spacing="5" alignment="CENTER" fx:id="noUpcomingMedicinesCard" visible="false" managed="false"
-                  styleClass="no-medicines-card-compact">
-                <Label text="No upcoming medicines scheduled" styleClass="no-medicines-text-compact"/>
+            <VBox spacing="8" fx:id="medsListBox" VBox.vgrow="ALWAYS">
+                <!-- white placeholders that match controller placeholders -->
+                <Region prefHeight="60" style="-fx-background-color: white; -fx-background-radius: 8; -fx-border-color:#e6e9ef; -fx-border-radius:8;"/>
+                <Region prefHeight="60" style="-fx-background-color: white; -fx-background-radius: 8; -fx-border-color:#e6e9ef; -fx-border-radius:8;"/>
+                <Region prefHeight="60" style="-fx-background-color: white; -fx-background-radius: 8; -fx-border-color:#e6e9ef; -fx-border-radius:8;"/>
             </VBox>
         </VBox>
 
-        <!-- Right: Actions card (now used to host the circular timer) -->
+        <!-- Right: Circular Timer -->
         <VBox spacing="8" styleClass="navigation-section-compact actions-section" prefWidth="450.0" HBox.hgrow="NEVER">
-            <Label text="Clock" styleClass="nav-title-compact"/>
-            <!-- Injected timer will appear here -->
             <StackPane fx:id="timerHost" prefWidth="340" prefHeight="340" style="-fx-alignment: center;"/>
-            <!-- Optional intake status + confirm button -->
-            <Label fx:id="nextDoseLabel" text="Next dose at: --:--" style="-fx-font-size: 14px; -fx-text-fill: #666;"/>
-            <Label fx:id="intakeStatusLabel" text="" style="-fx-font-size: 12px; -fx-text-fill: #c62828;"/>
-            <Button fx:id="confirmIntakeButton" text="Confirm intake ✅" onAction="#handleConfirmIntake" visible="false"
+
+            <!-- Only confirm button will show during snooze -->
+            <Button fx:id="confirmIntakeButton" text="Confirm intake ✅"
+                    onAction="#handleConfirmIntake" visible="false"
                     style="-fx-font-size: 16px; -fx-background-color: #2ecc71; -fx-text-fill: white;"/>
         </VBox>
     </HBox>
