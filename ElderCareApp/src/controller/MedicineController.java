@@ -28,11 +28,6 @@ import java.util.concurrent.ExecutionException;
  *  - prefer forceEndedAt for cutoff; else lastDose.timestamp; else activePeriod.endDate + latest time; else endDate.
  *  - UI prevents creating a schedule whose first dose datetime is before "now".
  *  - If startDate == today, time picker options earlier than now are filtered out and cannot be added.
- *
- *  - SNOOZE LOGIC CHANGED:
- *      * max snoozes is now an integer (0,1,2).
- *      * each snooze is fixed to 10 minutes (this controller does NOT store the 10min value in Firestore;
- *        it only stores the number of snoozes under key "maxSnoozes").
  */
 public class MedicineController {
 
@@ -55,9 +50,6 @@ public class MedicineController {
     @FXML private Spinner<Integer> pillsPerDoseSpinner;
     @FXML private Spinner<Integer> syrupMlPerDoseSpinner;
     @FXML private Spinner<Integer> unitsPerDoseSpinner;
-
-    // NEW: max snooze spinner (now counts = 0..2)
-    @FXML private Spinner<Integer> maxSnoozeSpinner;
 
     // date range pickers
     @FXML private DatePicker startDatePicker;
@@ -105,14 +97,6 @@ public class MedicineController {
         pillsPerDoseSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 10, 1));
         syrupMlPerDoseSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 100, 5));
         unitsPerDoseSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 100, 1));
-
-        // NEW max snooze spinner: values 0..2, step 1 (each snooze = 10 minutes)
-        SpinnerValueFactory.IntegerSpinnerValueFactory snoozeFactory =
-                new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 2, 1, 1);
-        maxSnoozeSpinner.setValueFactory(snoozeFactory);
-        // make non-editable to avoid typed values outside allowed range
-        maxSnoozeSpinner.setEditable(false);
-        Tooltip.install(maxSnoozeSpinner, new Tooltip("Number of allowed snoozes (each snooze = 10 minutes). Allowed: 0, 1, 2"));
 
         // date pickers defaults
         startDatePicker.setValue(LocalDate.now());
@@ -302,16 +286,13 @@ public class MedicineController {
                     if (!lt.isBefore(nowTime)) allowed.add(t);
                 } catch (Exception ignored) {}
             }
-            // if no allowed times (e.g., it's 23:15 but hourly list doesn't include >23:00), still show all and enforce validation on add/save
             if (allowed.isEmpty()) {
                 timePickerCombo.getItems().setAll(hourly);
             } else {
                 timePickerCombo.getItems().setAll(allowed);
             }
-            // set a reasonable default
             if (!timePickerCombo.getItems().isEmpty()) timePickerCombo.setValue(timePickerCombo.getItems().get(0));
         } else {
-            // not today -> all times OK
             timePickerCombo.getItems().setAll(hourly);
             timePickerCombo.setValue("08:00");
         }
@@ -337,7 +318,6 @@ public class MedicineController {
                     return;
                 }
             } catch (Exception ex) {
-                // if parse fails, block adding
                 statusLabel.setText("Invalid time format.");
                 return;
             }
@@ -445,9 +425,6 @@ public class MedicineController {
         } else {
             payload.put("amount", "");
         }
-
-        // NEW: persist number of snoozes as integer (0,1,2) - each snooze = 10 minutes (not stored here)
-        payload.put("maxSnoozes", maxSnoozeSpinner.getValue());
 
         // attach active date range
         payload.put("activePeriod", Map.of(
@@ -803,13 +780,10 @@ public class MedicineController {
             Button taken = new Button("Taken");
             taken.setStyle("-fx-background-color:#2e7d32; -fx-text-fill:white;");
             taken.setOnAction(e -> markDoseEvent(medId, time, "taken"));
-            Button snooze = new Button("Snooze");
-            snooze.setStyle("-fx-background-color:#f57c00; -fx-text-fill:white;");
-            snooze.setOnAction(e -> markDoseEvent(medId, time, "snoozed"));
             Button skip = new Button("Skip");
             skip.setStyle("-fx-background-color:#c62828; -fx-text-fill:white;");
             skip.setOnAction(e -> markDoseEvent(medId, time, "skipped"));
-            HBox actions = new HBox(8, taken, snooze, skip);
+            HBox actions = new HBox(8, taken, skip);
             root.getChildren().addAll(meta, spacer, timeLabel, actions);
         } else {
             root.getChildren().addAll(meta, spacer, timeLabel);
@@ -867,7 +841,6 @@ public class MedicineController {
         pillsPerDoseSpinner.getValueFactory().setValue(1);
         syrupMlPerDoseSpinner.getValueFactory().setValue(5);
         unitsPerDoseSpinner.getValueFactory().setValue(1);
-        maxSnoozeSpinner.getValueFactory().setValue(1); // reset to default (1 snooze)
         timesListView.getItems().clear();
         medicineTypeCombo.setValue("Tablet");
         updateTypeControls();

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.geometry.Pos?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.DatePicker?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane xmlns="http://javafx.com/javafx/23.0.1"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="controller.DoseIntakeHistoryController"
+            style="-fx-background-color: #f6f8fb;">
+
+    <!-- Top: Filters -->
+    <top>
+        <VBox spacing="10" style="-fx-padding:16;">
+            <Label text="Dose Intake History" style="-fx-font-size:20px; -fx-font-weight:bold; -fx-text-fill:#222;" />
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <TextField fx:id="nameFilterField" promptText="Search by medicine name..." HBox.hgrow="ALWAYS" />
+                <ComboBox fx:id="typeFilterCombo" prefWidth="160" promptText="Type (any)"/>
+                <ComboBox fx:id="statusFilterCombo" prefWidth="180" promptText="Status (any)">
+                    <!-- items added in controller -->
+                </ComboBox>
+                <DatePicker fx:id="fromDatePicker" promptText="From date" />
+                <DatePicker fx:id="toDatePicker" promptText="To date" />
+                <Button fx:id="searchBtn" text="Search" />
+                <Button fx:id="clearBtn" text="Clear" />
+            </HBox>
+            <Label fx:id="hintLabel" text="Tip: leave date range empty to search last 7 days" style="-fx-text-fill:#666;" />
+        </VBox>
+    </top>
+
+    <!-- Center: Table -->
+    <center>
+        <VBox spacing="8" style="-fx-padding: 0 16 8 16;">
+            <ScrollPane fitToWidth="true" fitToHeight="true" style="-fx-background-color:transparent;">
+                <content>
+                    <TableView fx:id="tableView" prefHeight="520.0" >
+                        <columns>
+                            <TableColumn fx:id="colDate" text="Date" prefWidth="100"/>
+                            <TableColumn fx:id="colTime" text="Time" prefWidth="80"/>
+                            <TableColumn fx:id="colName" text="Medicine" prefWidth="240"/>
+                            <TableColumn fx:id="colType" text="Type" prefWidth="120"/>
+                            <TableColumn fx:id="colAmount" text="Amount" prefWidth="100"/>
+                            <TableColumn fx:id="colStatus" text="Status" prefWidth="140"/>
+                            <TableColumn fx:id="colLoggedAt" text="Logged At" prefWidth="160"/>
+                        </columns>
+                    </TableView>
+                </content>
+            </ScrollPane>
+
+            <Label fx:id="noRecordsLabel" text="No records found" visible="false"
+                   style="-fx-font-size:14px; -fx-text-fill:#666; -fx-padding:12;" />
+        </VBox>
+    </center>
+
+    <!-- Bottom-right: Back button -->
+    <bottom>
+        <HBox alignment="CENTER_RIGHT" style="-fx-padding:12;">
+            <Region HBox.hgrow="ALWAYS"/>
+            <Button fx:id="backBtn" text="Back to Dashboard" style="-fx-background-color:#2d8cff; -fx-text-fill:white; -fx-font-weight:bold;" />
+        </HBox>
+    </bottom>
+
+</BorderPane>
