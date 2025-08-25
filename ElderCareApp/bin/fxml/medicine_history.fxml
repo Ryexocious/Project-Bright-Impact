@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="controller.MedicineHistoryController"
+            style="-fx-background-color: #f5f7fb;"
+            prefWidth="1000" prefHeight="600">
+
+    <top>
+        <HBox alignment="CENTER_LEFT" spacing="10"
+              style="-fx-padding:12 20 12 20; -fx-background-color: transparent;">
+            <Label text="Medicine History"
+                   style="-fx-font-size:20; -fx-font-weight:600; -fx-text-fill:#222;"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Button fx:id="backButton" text="Back to Dashboard"
+                    style="-fx-background-color:#1976d2; -fx-text-fill:white; -fx-padding:6 12;"/>
+        </HBox>
+    </top>
+
+    <center>
+        <ScrollPane fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED"
+                    style="-fx-background-color:transparent;">
+            <content>
+                <VBox fx:id="mainContainer" alignment="TOP_CENTER" spacing="20" style="-fx-padding:20;" maxWidth="960">
+
+                    <!-- Completed Medicines Section -->
+                    <VBox spacing="12" style="-fx-background-color:#fff; -fx-padding:16; -fx-border-radius:12; -fx-background-radius:12;
+                                               -fx-effect: dropshadow(two-pass-box, rgba(0,0,0,0.08), 6, 0, 0, 3);">
+                        <Label text="Completed Medicines" style="-fx-font-size:16; -fx-font-weight:600;"/>
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <TextField fx:id="completedSearchField" promptText="Search Medicine"/>
+                            <Label text="From:"/>
+                            <DatePicker fx:id="completedFromDate"/>
+                            <Label text="To:"/>
+                            <DatePicker fx:id="completedToDate"/>
+                        </HBox>
+                        <TableView fx:id="completedMedicinesTable" prefHeight="200" maxHeight="220">
+                            <columns>
+                                <TableColumn text="Medicine" fx:id="completedMedNameCol" prefWidth="200"/>
+                                <TableColumn text="Type" fx:id="completedMedTypeCol" prefWidth="120"/>
+                                <TableColumn text="Amount" fx:id="completedMedAmountCol" prefWidth="100"/>
+                                <TableColumn text="Doses Taken" fx:id="completedMedDosesCol" prefWidth="120"/>
+                                <TableColumn text="Date Range" fx:id="completedMedDateRangeCol" prefWidth="180"/>
+                            </columns>
+                        </TableView>
+                    </VBox>
+
+                    <!-- Ongoing Medicines Section -->
+                    <VBox spacing="12" style="-fx-background-color:#fff; -fx-padding:16; -fx-border-radius:12; -fx-background-radius:12;
+                                               -fx-effect: dropshadow(two-pass-box, rgba(0,0,0,0.08), 6, 0, 0, 3);">
+                        <Label text="Ongoing Medicines" style="-fx-font-size:16; -fx-font-weight:600;"/>
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <TextField fx:id="ongoingSearchField" promptText="Search Medicine"/>
+                            <Label text="From:"/>
+                            <DatePicker fx:id="ongoingFromDate"/>
+                            <Label text="To:"/>
+                            <DatePicker fx:id="ongoingToDate"/>
+                        </HBox>
+                        <TableView fx:id="ongoingMedicinesTable" prefHeight="200" maxHeight="220">
+                            <columns>
+                                <TableColumn text="Medicine" fx:id="ongoingMedNameCol" prefWidth="200"/>
+                                <TableColumn text="Type" fx:id="ongoingMedTypeCol" prefWidth="120"/>
+                                <TableColumn text="Amount" fx:id="ongoingMedAmountCol" prefWidth="100"/>
+                                <TableColumn text="Doses Taken" fx:id="ongoingMedDosesCol" prefWidth="120"/>
+                                <TableColumn text="Date Range" fx:id="ongoingMedDateRangeCol" prefWidth="180"/>
+                            </columns>
+                        </TableView>
+                    </VBox>
+
+                </VBox>
+            </content>
+        </ScrollPane>
+    </center>
+</BorderPane>
