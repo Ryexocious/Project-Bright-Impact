@@ -70,7 +70,7 @@ public class LoginController {
                             switchSceneWithFade("elder_dashboard.fxml", username);
                         } else {
                             // caretaker doesn't need the username passed
-                            switchSceneWithFade("caretaker_dashboard.fxml");
+                            switchSceneWithFade("caretaker_dashboard.fxml",username);
                         }
                     });
                 }
@@ -96,6 +96,8 @@ public class LoginController {
             Object controller = loader.getController();
             if (controller instanceof ElderDashboardController) {
                 ((ElderDashboardController) controller).initializeElder(loggedInUsername);
+            }else if(controller instanceof CaretakerDashboardController) {
+            	((CaretakerDashboardController)controller).initializeCaretaker(loggedInUsername);
             }
 
             Stage stage = (Stage) usernameField.getScene().getWindow();
