@@ -1,56 +1,89 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressIndicator?>
+<?import javafx.scene.control.Separator?>
 <?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.GridPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 
-<BorderPane xmlns="http://javafx.com/javafx/23.0.1"
-            xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="controller.CaretakerDashboardController">
+<BorderPane xmlns:fx="http://javafx.com/fxml"
+            fx:controller="controller.CaretakerDashboardController"
+            prefWidth="1100" prefHeight="720"
+            stylesheets="@../styles/dashboard-beautiful.css">
 
-    <!-- left navigation -->
+    <!-- TOP: Fancy header -->
+    <top>
+        <HBox alignment="CENTER_LEFT" spacing="12" styleClass="header-bar">
+            <padding>
+                <Insets top="14" right="18" bottom="14" left="18"/>
+            </padding>
+
+            <children>
+                <Label text="🩺 ElderCare" styleClass="brand-title"/>
+
+                <Region HBox.hgrow="ALWAYS"/>
+
+                <HBox spacing="10" alignment="CENTER_RIGHT">
+                    <children>
+                        <VBox alignment="CENTER_RIGHT" spacing="2">
+                            <Label fx:id="caretakerNameLabel" text="Ayesha" styleClass="profile-name"/>
+                            <Label text="Caretaker" styleClass="profile-role"/>
+                        </VBox>
+
+                        <StackPane styleClass="avatar">
+                            <Label fx:id="avatarInitialsLabel" text="AS" styleClass="avatar-text"/>
+                        </StackPane>
+                    </children>
+                </HBox>
+            </children>
+        </HBox>
+    </top>
+
+    <!-- LEFT: Vertical nav with icons -->
     <left>
-        <VBox spacing="12" style="-fx-background-color: #f8f9fb; -fx-padding: 18;">
-            <Label text="Caretaker Dashboard" style="-fx-font-size: 18px; -fx-font-weight: bold;" />
+        <VBox spacing="14" styleClass="left-nav">
+            <padding>
+                <Insets top="20" right="14" bottom="20" left="18"/>
+            </padding>
 
-            <Button text="🩺 Create Medicine Schedule"
-                    onAction="#handleCreateMedicineSchedule"
-                    style="-fx-font-size: 14px;"/>
+            <children>
+                <Label text="Actions" styleClass="nav-label"/>
 
-            <Button text="📅 Today's Schedule"
-                    onAction="#handleTodaysSchedule"
-                    style="-fx-font-size: 14px;"/>
+                <Button fx:id="createScheduleBtn" text="➕  Create Medicine Schedule" onAction="#handleCreateSchedule" styleClass="nav-button" prefWidth="240"/>
+                <Button fx:id="viewTodayBtn" text="📅  View Today's Schedule" onAction="#handleViewToday" styleClass="nav-button" prefWidth="240"/>
+                <Button fx:id="modifyScheduleBtn" text="✏️  Modify / Delete Schedule" onAction="#handleModifySchedule" styleClass="nav-button" prefWidth="240"/>
+                <Button fx:id="pastDoseBtn" text="📚  Past Completed Dose" onAction="#handlePastDoses" styleClass="nav-button" prefWidth="240"/>
+                
+                <!-- New features from teammate's dashboard -->
+                <Button fx:id="doseIntakeHistoryBtn" text="💊  Dose Intake History" onAction="#handleDoseIntakeHistory" styleClass="nav-button" prefWidth="240"/>
+                
+                <Region/>
 
-            <Button text="📖 Medicine History"
-                    onAction="#handleMedicineHistory"
-                    style="-fx-font-size: 14px;"/>
-
-            <Button text="💊 Check Dose Intake History"
-                    onAction="#handleDoseIntakeHistory"
-                    style="-fx-font-size: 14px;"/>
-
-            <Button text="✏️ Edit Current Medicine Doses"
-                    onAction="#handleEditCurrentDoses"
-                    style="-fx-font-size: 14px;"/>
-
-            <Button text="📊 Monitor Elder Vitals"
-                    onAction="#handleVitalsMonitoring"
-                    style="-fx-font-size: 14px;"/>
-
-            <Button text="🚪 Logout"
-                    onAction="#handleLogout"
-                    style="-fx-font-size: 14px; -fx-background-color: #bdc3c7;"/>
+                <Button text="Sign Out" onAction="#handleSignOut" styleClass="ghost-btn" prefWidth="240"/>
+            </children>
         </VBox>
     </left>
 
-    <!-- center: friendly welcome -->
+    <!-- CENTER: contentPane contains the dashboard home overview by default -->
     <center>
-        <HBox alignment="CENTER" style="-fx-padding: 24;">
-            <Label text="Welcome, Caretaker 🧑‍⚕️"
-                   style="-fx-font-size: 26px; -fx-font-weight: bold; -fx-text-fill: #333;" />
-        </HBox>
+        <StackPane fx:id="contentPane" styleClass="main-content">
+            <padding>
+                <Insets top="20" right="20" bottom="20" left="20"/>
+            </padding>
+
+            <children>
+                <!-- Dashboard Home content (overview) -->
+                <GridPane hgap="18" vgap="18">
+                    <!-- Your GridPane content here -->
+                </GridPane>
+            </children>
+        </StackPane>
     </center>
 
 </BorderPane>
