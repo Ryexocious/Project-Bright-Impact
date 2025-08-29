@@ -8,18 +8,14 @@
 <BorderPane xmlns="http://javafx.com/javafx/17"
             xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="controller.MedicineController"
-            style="-fx-background-color: #f5f7fb;"
-            prefHeight="560" prefWidth="552">
+            stylesheets="@../styles/medicine.css"
+            prefHeight="600" prefWidth="850">
 
     <top>
-        <HBox alignment="CENTER_LEFT" spacing="8"
-              style="-fx-padding:10 12 10 12; -fx-background-color: transparent;"
-              prefHeight="44">
-            <Label text="ElderCare — Medicine Scheduler"
-                   style="-fx-font-size:14; -fx-text-fill:#222; -fx-font-weight:600;"/>
+        <HBox alignment="CENTER_LEFT" spacing="8" styleClass="top-bar">
+            <Label text="ElderCare — Medicine Scheduler" styleClass="header-title"/>
             <Region HBox.hgrow="ALWAYS"/>
-            <Button fx:id="closeButton" text="✖"
-                    style="-fx-background-color:transparent; -fx-font-size:14; -fx-text-fill:#666; -fx-padding:6;">
+            <Button fx:id="closeButton" text="✖" styleClass="close-button">
                 <tooltip>
                     <Tooltip text="Close"/>
                 </tooltip>
@@ -28,91 +24,75 @@
     </top>
 
     <center>
-        <!-- fx:id used so controller can bind to viewport size for fullscreen resizing -->
-        <ScrollPane fx:id="centerScroll" fitToWidth="true" pannable="true"
-                    style="-fx-background-color:transparent;">
+        <ScrollPane fx:id="centerScroll" fitToWidth="true" pannable="true" styleClass="main-scroll">
             <content>
-                <VBox alignment="TOP_CENTER" spacing="14"
-                      style="-fx-padding: 14;" maxWidth="516" >
+                <VBox alignment="TOP_CENTER" spacing="16" styleClass="main-container">
 
                     <!-- Elder Info & Status -->
-                    <HBox alignment="CENTER" spacing="10"
-                          style="-fx-padding: 0 4 0 4;" maxWidth="492">
-                        <Label fx:id="elderFoundLabel" text="(loading elder...)"
-                               style="-fx-font-size:14; -fx-text-fill:#333;"/>
+                    <HBox alignment="CENTER" spacing="10" styleClass="elder-info-container">
+                        <Label fx:id="elderFoundLabel" text="(loading elder...)" styleClass="elder-label"/>
                         <Region HBox.hgrow="ALWAYS"/>
-                        <Label fx:id="statusLabel" text="Ready."
-                               style="-fx-font-size:12; -fx-text-fill:#666;"/>
+                        <Label fx:id="statusLabel" text="Ready." styleClass="status-label"/>
                     </HBox>
 
                     <!-- Today's Schedule -->
-                    <VBox alignment="TOP_CENTER" spacing="8"
-                          style="-fx-background-color: white; -fx-padding:12; -fx-border-radius:10; -fx-background-radius:10;
-                                 -fx-effect: dropshadow(two-pass-box, rgba(0,0,0,0.06), 6, 0, 0, 2);"
-                          maxWidth="492" >
-                        <Label text="Today's Schedule" style="-fx-font-size:16; -fx-font-weight:600;"/>
-                        <ListView fx:id="scheduleListView"
-                                  style="-fx-background-color:transparent; -fx-border-radius:8; -fx-pref-width:468;" />
+                    <VBox alignment="TOP_CENTER" spacing="8" styleClass="schedule-container">
+                        <Label text="Today's Schedule" styleClass="section-title"/>
+                        <ListView fx:id="scheduleListView" styleClass="schedule-list"/>
                     </VBox>
 
                     <!-- Add Medicine Section -->
-                    <VBox alignment="TOP_CENTER" spacing="10"
-                          style="-fx-background-color: white; -fx-padding:12; -fx-border-radius:10; -fx-background-radius:10;
-                                 -fx-effect: dropshadow(two-pass-box, rgba(0,0,0,0.06), 6, 0, 0, 2);"
-                          maxWidth="492">
+                    <VBox alignment="TOP_CENTER" spacing="12" styleClass="form-container">
 
-                        <Label text="Add Medicine" style="-fx-font-size:15; -fx-font-weight:600;"/>
+                        <Label text="Add Medicine" styleClass="section-title"/>
 
                         <!-- Medicine Info Form -->
-                        <GridPane hgap="10" vgap="8" style="-fx-pref-width:468;">
+                        <GridPane hgap="10" vgap="8" styleClass="form-grid">
                             <columnConstraints>
                                 <ColumnConstraints percentWidth="30"/>
                                 <ColumnConstraints percentWidth="70"/>
                             </columnConstraints>
 
-                            <Label text="Name:" GridPane.rowIndex="0" GridPane.columnIndex="0" />
-                            <TextField fx:id="medicineNameField" GridPane.rowIndex="0" GridPane.columnIndex="1" />
+                            <Label text="Name:" GridPane.rowIndex="0" GridPane.columnIndex="0" styleClass="form-label"/>
+                            <TextField fx:id="medicineNameField" GridPane.rowIndex="0" GridPane.columnIndex="1" styleClass="form-field"/>
 
-                            <Label text="Type:" GridPane.rowIndex="1" GridPane.columnIndex="0" />
-                            <ComboBox fx:id="medicineTypeCombo" GridPane.rowIndex="1" GridPane.columnIndex="1" />
+                            <Label text="Type:" GridPane.rowIndex="1" GridPane.columnIndex="0" styleClass="form-label"/>
+                            <ComboBox fx:id="medicineTypeCombo" GridPane.rowIndex="1" GridPane.columnIndex="1" styleClass="form-combo"/>
 
-                            <Label text="Pills / dose:" GridPane.rowIndex="2" GridPane.columnIndex="0" />
-                            <Spinner fx:id="pillsPerDoseSpinner" GridPane.rowIndex="2" GridPane.columnIndex="1" />
+                            <Label text="Pills / dose:" GridPane.rowIndex="2" GridPane.columnIndex="0" styleClass="form-label"/>
+                            <Spinner fx:id="pillsPerDoseSpinner" GridPane.rowIndex="2" GridPane.columnIndex="1" styleClass="form-spinner"/>
 
-                            <Label text="Syrup ml / dose:" GridPane.rowIndex="3" GridPane.columnIndex="0" />
-                            <Spinner fx:id="syrupMlPerDoseSpinner" GridPane.rowIndex="3" GridPane.columnIndex="1" />
+                            <Label text="Syrup ml / dose:" GridPane.rowIndex="3" GridPane.columnIndex="0" styleClass="form-label"/>
+                            <Spinner fx:id="syrupMlPerDoseSpinner" GridPane.rowIndex="3" GridPane.columnIndex="1" styleClass="form-spinner"/>
 
-                            <Label text="Units / dose:" GridPane.rowIndex="4" GridPane.columnIndex="0" />
-                            <Spinner fx:id="unitsPerDoseSpinner" GridPane.rowIndex="4" GridPane.columnIndex="1" />
+                            <Label text="Units / dose:" GridPane.rowIndex="4" GridPane.columnIndex="0" styleClass="form-label"/>
+                            <Spinner fx:id="unitsPerDoseSpinner" GridPane.rowIndex="4" GridPane.columnIndex="1" styleClass="form-spinner"/>
                         </GridPane>
 
-                        <Separator/>
+                        <Separator styleClass="form-separator"/>
 
                         <!-- Active Date Range -->
-                        <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-pref-width:468;">
-                            <Label text="Active from:"/>
-                            <DatePicker fx:id="startDatePicker"/>
-                            <Label text="to"/>
-                            <DatePicker fx:id="endDatePicker"/>
+                        <HBox spacing="10" alignment="CENTER_LEFT" styleClass="date-range-container">
+                            <Label text="Active from:" styleClass="form-label"/>
+                            <DatePicker fx:id="startDatePicker" styleClass="form-datepicker"/>
+                            <Label text="to" styleClass="form-label"/>
+                            <DatePicker fx:id="endDatePicker" styleClass="form-datepicker"/>
                             <Region HBox.hgrow="ALWAYS"/>
                         </HBox>
 
-                        <Separator/>
+                        <Separator styleClass="form-separator"/>
 
                         <!-- Time Picker Section -->
-                        <VBox spacing="8" alignment="CENTER_LEFT" style="-fx-pref-width:468;">
-                            <HBox spacing="8" alignment="CENTER_LEFT">
-                                <Label text="Time (1-hour steps):"/>
-                                <ComboBox fx:id="timePickerCombo" prefWidth="120"/>
-                                <Button fx:id="addTimeButton" text="Add"
-                                        style="-fx-background-color:#1976d2; -fx-text-fill:white; -fx-padding:6 10;" />
-                                <Button fx:id="removeTimeButton" text="Remove"
-                                        style="-fx-background-color:#e0e0e0; -fx-padding:6 10;" />
-                                <Button fx:id="clearTimesButton" text="Clear"
-                                        style="-fx-background-color:#e0e0e0; -fx-padding:6 10;" />
+                        <VBox spacing="8" alignment="CENTER_LEFT" styleClass="time-section">
+                            <HBox spacing="8" alignment="CENTER_LEFT" styleClass="time-controls">
+                                <Label text="Time (1-hour steps):" styleClass="form-label"/>
+                                <ComboBox fx:id="timePickerCombo" prefWidth="100" styleClass="form-combo"/>
+                                <Button fx:id="addTimeButton" text="Add Time" styleClass="primary-button" minWidth="80"/>
+                                <Button fx:id="removeTimeButton" text="Remove" styleClass="secondary-button" minWidth="80"/>
+                                <Button fx:id="clearTimesButton" text="Clear All" styleClass="secondary-button" minWidth="80"/>
                                 <Region HBox.hgrow="ALWAYS"/>
                             </HBox>
-                            <ListView fx:id="timesListView" prefWidth="468" prefHeight="110" />
+                            <ListView fx:id="timesListView" prefHeight="120" styleClass="times-list"/>
                         </VBox>
                     </VBox>
                 </VBox>
@@ -121,13 +101,10 @@
     </center>
 
     <bottom>
-        <HBox spacing="10" alignment="CENTER_RIGHT"
-              style="-fx-padding:10 16 10 16; -fx-background-color: transparent;">
+        <HBox spacing="10" alignment="CENTER_RIGHT" styleClass="button-container">
             <Region HBox.hgrow="ALWAYS"/>
-            <Button fx:id="saveButton" text="Save"
-                    style="-fx-background-color:#2e7d32; -fx-text-fill:white; -fx-padding:8 12; -fx-font-weight:600;" />
-            <Button fx:id="backButton" text="Back"
-                    style="-fx-background-color:#c62828; -fx-text-fill:white; -fx-padding:8 12; -fx-font-weight:600;" />
+            <Button fx:id="saveButton" text="Save Medicine" styleClass="success-button" minWidth="100"/>
+            <Button fx:id="backButton" text="Back" styleClass="danger-button" minWidth="80"/>
         </HBox>
     </bottom>
 </BorderPane>

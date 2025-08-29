@@ -63,9 +63,9 @@ public class TodaysScheduleController {
         detectLoggedInCaretaker();
 
         // wire back button to dashboard
-        if (backButton != null) {
+        /*if (backButton != null) {
             backButton.setOnAction(e -> handleBack());
-        }
+        }*/
     }
 
     /**
@@ -443,7 +443,7 @@ public class TodaysScheduleController {
         }
     }
 
-    private void handleBack() {
+    /*private void handleBack() {
         try {
             Parent root = javafx.fxml.FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
             javafx.stage.Stage stage = (javafx.stage.Stage) scheduleContainer.getScene().getWindow();
@@ -456,5 +456,5 @@ public class TodaysScheduleController {
                 a.showAndWait();
             });
         }
-    }
+    }*/
 }

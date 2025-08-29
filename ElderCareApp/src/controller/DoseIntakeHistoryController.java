@@ -2,6 +2,8 @@ package controller;
 
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.*;
+
+import javafx.animation.FadeTransition;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
@@ -60,6 +62,7 @@ public class DoseIntakeHistoryController {
 
     private String currentCaretakerId = null;
     private String resolvedElderId = null;
+    private String caretakerName;
 
     // debounce for live typing
     private PauseTransition nameDebounce;
@@ -141,6 +144,9 @@ public class DoseIntakeHistoryController {
                     if (elderIdObj != null) {
                         resolvedElderId = elderIdObj.toString();
                     }
+                    Object care = docs.get(0).get("username");
+                    
+                    caretakerName=care.toString();
                 }
                 Platform.runLater(() -> {
                     // run initial search (last 7 days) when ready
@@ -327,9 +333,18 @@ public class DoseIntakeHistoryController {
 
     private void handleBack() {
         try {
-            Parent root = FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
-            Stage stage = (Stage) backBtn.getScene().getWindow();
-            stage.setScene(new Scene(root));
+        	FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
+            Parent root = loader.load();
+            
+            // Get the controller and initialize it with the caretaker username
+            CaretakerDashboardController controller = loader.getController();
+            controller.initializeCaretaker(caretakerName); // Pass the username here
+            FadeTransition ft = new FadeTransition(Duration.millis(400), root);
+            ft.setFromValue(0);
+            ft.setToValue(1);
+            ft.play();
+            javafx.stage.Stage stage = (javafx.stage.Stage) backBtn.getScene().getWindow();
+            stage.setScene(new javafx.scene.Scene(root));
             stage.centerOnScreen();
         } catch (IOException e) {
             e.printStackTrace();

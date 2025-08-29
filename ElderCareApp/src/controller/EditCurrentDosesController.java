@@ -2,6 +2,8 @@ package controller;
 
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.*;
+
+import javafx.animation.FadeTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -18,6 +20,12 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import controller.LoginController;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.stage.Stage;
+import javafx.util.Duration;
 
 public class EditCurrentDosesController {
 
@@ -45,6 +53,7 @@ public class EditCurrentDosesController {
     private final ObservableList<MedicineRecord> medicineList = FXCollections.observableArrayList();
     private final ObservableList<String> timesList = FXCollections.observableArrayList();
     private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private String caretakerName;
 
     private String resolvedElderId = null;
     private String currentCaretakerId = null;
@@ -177,6 +186,9 @@ public class EditCurrentDosesController {
                         resolvedElderId = elderIdObj.toString();
                         loadMedicines();
                     }
+                    Object care = docs.get(0).get("username");
+                    
+                    caretakerName=care.toString();
                 }
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
@@ -871,14 +883,32 @@ public class EditCurrentDosesController {
 
     private void handleBack() {
         try {
-            javafx.scene.Parent root = javafx.fxml.FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
+          /*  javafx.scene.Parent root = javafx.fxml.FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
+            javafx.stage.Stage stage = (javafx.stage.Stage) backButton.getScene().getWindow();
+            stage.setScene(new javafx.scene.Scene(root));
+            stage.centerOnScreen();*/
+        	
+        	FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
+            Parent root = loader.load();
+            
+            // Get the controller and initialize it with the caretaker username
+            CaretakerDashboardController controller = loader.getController();
+            controller.initializeCaretaker(caretakerName); // Pass the username here
+            FadeTransition ft = new FadeTransition(Duration.millis(400), root);
+            ft.setFromValue(0);
+            ft.setToValue(1);
+            ft.play();
             javafx.stage.Stage stage = (javafx.stage.Stage) backButton.getScene().getWindow();
             stage.setScene(new javafx.scene.Scene(root));
             stage.centerOnScreen();
+            
+         //   Stage stage = (Stage) backButton.getScene().getWindow();
+           // Scene scene = new Scene(root);
         } catch (IOException e) {
             e.printStackTrace();
             showAlert("Failed to load dashboard.");
         }
+
     }
 
     public static class MedicineRecord {
