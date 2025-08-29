@@ -2,6 +2,8 @@ package controller;
 
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.*;
+
+import javafx.animation.FadeTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -9,6 +11,7 @@ import javafx.collections.transformation.FilteredList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.util.Duration;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -60,6 +63,7 @@ public class MedicineHistoryController {
     @FXML private Button backButton;
 
     private String resolvedElderId = null;
+    private String caretakerName;
     private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private ObservableList<MedicineRecord> completedList = FXCollections.observableArrayList();
@@ -182,6 +186,9 @@ public class MedicineHistoryController {
                         resolvedElderId = elderIdObj.toString();
                         loadMedicineHistory();
                     }
+                    Object care = docs.get(0).get("username");
+                    
+                    caretakerName=care.toString();
                 }
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
@@ -480,9 +487,18 @@ public class MedicineHistoryController {
      */
     private void handleBack() {
         try {
-            Parent root = FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
+        	FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
+            Parent root = loader.load();
+            
+            
+            CaretakerDashboardController controller = loader.getController();
+            controller.initializeCaretaker(caretakerName); 
+            FadeTransition ft = new FadeTransition(Duration.millis(400), root);
+            ft.setFromValue(0);
+            ft.setToValue(1);
+            ft.play();
             javafx.stage.Stage stage = (javafx.stage.Stage) backButton.getScene().getWindow();
-            stage.setScene(new Scene(root));
+            stage.setScene(new javafx.scene.Scene(root));
             stage.centerOnScreen();
         } catch (IOException e) {
             e.printStackTrace();

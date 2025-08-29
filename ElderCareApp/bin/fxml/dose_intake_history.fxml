@@ -18,56 +18,54 @@
 <BorderPane xmlns="http://javafx.com/javafx/23.0.1"
             xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="controller.DoseIntakeHistoryController"
-            style="-fx-background-color: #f6f8fb;">
+            stylesheets="@../styles/dose.css"
+            styleClass="main-container">
 
     <!-- Top: Filters -->
     <top>
-        <VBox spacing="10" style="-fx-padding:16;">
-            <Label text="Dose Intake History" style="-fx-font-size:20px; -fx-font-weight:bold; -fx-text-fill:#222;" />
-            <HBox spacing="10" alignment="CENTER_LEFT">
-                <TextField fx:id="nameFilterField" promptText="Search by medicine name..." HBox.hgrow="ALWAYS" />
-                <ComboBox fx:id="typeFilterCombo" prefWidth="160" promptText="Type (any)"/>
-                <ComboBox fx:id="statusFilterCombo" prefWidth="180" promptText="Status (any)">
-                    <!-- items added in controller -->
-                </ComboBox>
-                <DatePicker fx:id="fromDatePicker" promptText="From date" />
-                <DatePicker fx:id="toDatePicker" promptText="To date" />
-                <Button fx:id="searchBtn" text="Search" />
-                <Button fx:id="clearBtn" text="Clear" />
-            </HBox>
-            <Label fx:id="hintLabel" text="Tip: leave date range empty to search last 7 days" style="-fx-text-fill:#666;" />
+        <VBox spacing="10" styleClass="top-container">
+            <Label text="Dose Intake History" styleClass="title-label" />
+			<HBox spacing="10" alignment="CENTER_LEFT" styleClass="filter-container">
+			    <TextField fx:id="nameFilterField" promptText="Search by medicine name..." styleClass="filter-field" HBox.hgrow="ALWAYS" prefWidth="180" />
+			    <ComboBox fx:id="typeFilterCombo" prefWidth="120" promptText="Type (any)" styleClass="filter-combo"/>
+			    <ComboBox fx:id="statusFilterCombo" prefWidth="120" promptText="Status (any)" styleClass="filter-combo"/>
+			    <DatePicker fx:id="fromDatePicker" promptText="From" prefWidth="120" styleClass="filter-date-picker" />
+			    <DatePicker fx:id="toDatePicker" promptText="To" prefWidth="120" styleClass="filter-date-picker" />
+			    <Button fx:id="searchBtn" text="Search" styleClass="button search-button" minWidth="80" />
+			    <Button fx:id="clearBtn" text="Clear" styleClass="button clear-button" minWidth="80" />
+			</HBox>
+            <Label fx:id="hintLabel" text="Tip: leave date range empty to search last 7 days" styleClass="hint-label" />
         </VBox>
     </top>
 
     <!-- Center: Table -->
     <center>
-        <VBox spacing="8" style="-fx-padding: 0 16 8 16;">
-            <ScrollPane fitToWidth="true" fitToHeight="true" style="-fx-background-color:transparent;">
+        <VBox spacing="8" styleClass="center-container">
+            <ScrollPane fitToWidth="true" fitToHeight="true" styleClass="table-scroll-pane">
                 <content>
-                    <TableView fx:id="tableView" prefHeight="520.0" >
+                    <TableView fx:id="tableView" prefHeight="520.0" styleClass="record-table">
                         <columns>
-                            <TableColumn fx:id="colDate" text="Date" prefWidth="100"/>
-                            <TableColumn fx:id="colTime" text="Time" prefWidth="80"/>
-                            <TableColumn fx:id="colName" text="Medicine" prefWidth="240"/>
-                            <TableColumn fx:id="colType" text="Type" prefWidth="120"/>
-                            <TableColumn fx:id="colAmount" text="Amount" prefWidth="100"/>
-                            <TableColumn fx:id="colStatus" text="Status" prefWidth="140"/>
-                            <TableColumn fx:id="colLoggedAt" text="Logged At" prefWidth="160"/>
+                            <TableColumn fx:id="colDate" text="Date" prefWidth="100" styleClass="table-column"/>
+                            <TableColumn fx:id="colTime" text="Time" prefWidth="80" styleClass="table-column"/>
+                            <TableColumn fx:id="colName" text="Medicine" prefWidth="240" styleClass="table-column"/>
+                            <TableColumn fx:id="colType" text="Type" prefWidth="120" styleClass="table-column"/>
+                            <TableColumn fx:id="colAmount" text="Amount" prefWidth="100" styleClass="table-column"/>
+                            <TableColumn fx:id="colStatus" text="Status" prefWidth="140" styleClass="table-column"/>
+                            <TableColumn fx:id="colLoggedAt" text="Logged At" prefWidth="160" styleClass="table-column"/>
                         </columns>
                     </TableView>
                 </content>
             </ScrollPane>
 
-            <Label fx:id="noRecordsLabel" text="No records found" visible="false"
-                   style="-fx-font-size:14px; -fx-text-fill:#666; -fx-padding:12;" />
+            <Label fx:id="noRecordsLabel" text="No records found" visible="false" styleClass="no-records-label" />
         </VBox>
     </center>
 
     <!-- Bottom-right: Back button -->
     <bottom>
-        <HBox alignment="CENTER_RIGHT" style="-fx-padding:12;">
+        <HBox alignment="CENTER_RIGHT" styleClass="bottom-container">
             <Region HBox.hgrow="ALWAYS"/>
-            <Button fx:id="backBtn" text="Back to Dashboard" style="-fx-background-color:#2d8cff; -fx-text-fill:white; -fx-font-weight:bold;" />
+            <Button fx:id="backBtn" text="Back to Dashboard" styleClass="button back-button" />
         </HBox>
     </bottom>
 

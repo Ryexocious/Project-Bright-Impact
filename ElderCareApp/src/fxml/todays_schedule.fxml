@@ -6,16 +6,14 @@
 <BorderPane xmlns="http://javafx.com/javafx"
             xmlns:fx="http://javafx.com/fxml"
             fx:controller="controller.TodaysScheduleController"
-            style="-fx-background-color: #f5f7fb;"
+            stylesheets="@../styles/today.css"
             prefWidth="960"
             prefHeight="500">
 
     <!-- Top bar -->
     <top>
-        <HBox alignment="CENTER_LEFT" spacing="8"
-              style="-fx-padding:12; -fx-background-color:#ffffff; -fx-border-color:#e5e7eb; -fx-border-width:0 0 1 0;">
-            <Label text="Medicine Schedule"
-                   style="-fx-font-size:16; -fx-font-weight:600; -fx-text-fill:#111827;"/>
+        <HBox alignment="CENTER_LEFT" spacing="8" styleClass="top-bar">
+            <Label text="Medicine Schedule" styleClass="header-label"/>
         </HBox>
     </top>
 
@@ -24,13 +22,13 @@
         <ScrollPane fitToWidth="true"
                     hbarPolicy="NEVER"
                     vbarPolicy="AS_NEEDED"
-                    style="-fx-background-color:transparent;"
+                    styleClass="scroll-pane"
                     prefHeight="420">
             <content>
                 <VBox fx:id="scheduleContainer"
                       alignment="TOP_CENTER"
-                      spacing="10"
-                      style="-fx-padding:16;"
+                      spacing="16"
+                      styleClass="schedule-container"
                       maxWidth="900">
                     <!-- Date label + dose cards + custom day button will be added dynamically -->
                 </VBox>
@@ -40,17 +38,11 @@
 
     <!-- Bottom bar -->
     <bottom>
-        <HBox alignment="CENTER_LEFT" spacing="12"
-              style="-fx-padding:12; -fx-background-color:#ffffff; -fx-border-color:#e5e7eb; -fx-border-width:1 0 0 0;">
+        <HBox alignment="CENTER_LEFT" spacing="12" styleClass="bottom-bar">
             <Label fx:id="elderFoundLabel"
                    text="Detecting linked elder..."
-                   style="-fx-font-size:14; -fx-font-weight:500; -fx-text-fill:#374151;"/>
+                   styleClass="status-label"/>
             <Region HBox.hgrow="ALWAYS"/>
-            <!-- Back button aligned right -->
-            <Button fx:id="backButton"
-                    text="Back"
-                    style="-fx-background-color:#1a73e8; -fx-text-fill:white; -fx-font-size:13; -fx-background-radius:6; -fx-padding:6 16;"
-                    mnemonicParsing="false"/>
         </HBox>
     </bottom>
 

@@ -1,0 +1,220 @@
+/* Global font */
+.root, .vbox, .hbox {
+    -fx-font-family: "Segoe UI", "Roboto", Arial, sans-serif;
+    -fx-background-color: linear-gradient(to bottom, #f8fafc 0%, #e2e8f0 100%);
+}
+
+/* Titles */
+.header-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #263238;
+    -fx-padding: 6 0 4 0;
+  
+}
+
+.subheader-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: 600;
+    -fx-text-fill: #1f2937;
+}
+
+/* Card styling */
+.card {
+    -fx-background-color: linear-gradient(to bottom right, #ffffff, #fbfdff);
+    -fx-background-radius: 10;
+    -fx-padding: 14;
+    -fx-effect: dropshadow(gaussian, rgba(33,33,33,0.08), 8, 0.0, 0, 2);
+    -fx-border-radius: 10;
+    -fx-border-color: rgba(34,34,34,0.06);
+}
+
+.edit-section {
+    -fx-padding: 12;
+}
+
+/* Table styling */
+.med-table {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-table-cell-border-color: transparent;
+    -fx-padding: 6 0 6 0;
+}
+
+/* Column header styling */
+.table-view .column-header-background {
+    -fx-background-color: linear-gradient(#ffffff, #fbfdff);
+}
+.table-view .table-column-header {
+    -fx-background-color: transparent;
+    -fx-alignment: CENTER-LEFT;
+}
+.table-view .table-column-header .label {
+    -fx-font-weight: 600;
+    -fx-text-fill: #374151;
+}
+
+/* Row styling */
+.table-row-cell:filled:selected, .table-row-cell:focused:selected {
+    -fx-background-color: linear-gradient(to right, #e3f2fd, #bbdefb);
+}
+.table-row-cell:filled:hover {
+    -fx-background-color: #f5f7fb;
+}
+.table-row-cell:odd {
+    -fx-background-color: transparent;
+}
+.table-row-cell:even {
+    -fx-background-color: rgba(236,238,241,0.6);
+}
+
+/* Buttons */
+.button.btn {
+    -fx-cursor: hand;
+    -fx-font-weight: 600;
+    -fx-padding: 8 12;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0.0, 0, 1);
+}
+.button.btn.primary {
+    -fx-background-color: linear-gradient(#1976d2, #1565c0);
+    -fx-text-fill: white;
+}
+.button.btn.success {
+    -fx-background-color: linear-gradient(#2ecc71, #28b463);
+    -fx-text-fill: white;
+}
+.button.btn.neutral {
+    -fx-background-color: #eceff1;
+    -fx-text-fill: #263238;
+}
+
+/* Inputs */
+.text-field, .combo-box, .date-picker {
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 6 8;
+    -fx-border-color: rgba(39, 54, 66, 0.08);
+    -fx-focus-color: #90caf9;
+}
+
+.unit-label {
+    -fx-padding: 5 10;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-border-color: rgba(39, 54, 66, 0.06);
+    -fx-opacity: 0.95;
+}
+
+.times-list {
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-border-color: rgba(39, 54, 66, 0.06);
+}
+
+/* Progress label */
+.progress-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: #374151;
+}
+
+/* Ensure the table rows expand properly */
+.med-table .table-row-cell {
+    -fx-cell-size: 35px;
+}
+
+/* Make the table header look better */
+.med-table .column-header {
+    -fx-size: 40px;
+    -fx-background-color: #f0f0f0;
+    -fx-border-color: #ddd;
+    -fx-border-width: 0 0 1px 0;
+}
+
+/* Style for action buttons in the table */
+.col-action .button {
+    -fx-padding: 4px 8px;
+    -fx-font-size: 12px;
+    -fx-background-radius: 4px;
+}
+
+/* Hide vertical scrollbar unless hovered/pressed (keeps UI clean) */
+.table-view .virtual-flow .scroll-bar:vertical {
+    -fx-opacity: 0;
+}
+.table-view .virtual-flow .scroll-bar:vertical:pressed,
+.table-view .virtual-flow .scroll-bar:vertical:hover {
+    -fx-opacity: 1;
+}
+
+/* Optional: hide horizontal scrollbar unless hovered (helps when content fits) */
+/* Vertical scrollbar: hidden by default, shown on hover/press */
+.table-view .virtual-flow .scroll-bar:vertical {
+    -fx-opacity: 0;
+}
+.table-view .virtual-flow .scroll-bar:vertical:pressed,
+.table-view .virtual-flow .scroll-bar:vertical:hover {
+    -fx-opacity: 1;
+}
+
+/* Horizontal scrollbar: keep visible when present */
+.table-view .virtual-flow .scroll-bar:horizontal {
+    -fx-opacity: 1;
+}
+
+/* Make horizontal thumb visible and easier to spot (optional but recommended) */
+.table-view .virtual-flow .scroll-bar:horizontal .thumb {
+    -fx-background-radius: 6;
+    -fx-background-insets: 0;
+    -fx-background-color: rgba(0,0,0,0.25); /* subtle, can tweak or remove */
+    -fx-pref-height: 8;
+}
+
+/* If the horizontal scrollbar is disabled (no scrolling), fade it slightly */
+.table-view .virtual-flow .scroll-bar:horizontal:disabled {
+    -fx-opacity: 0.45;
+}
+.ongoing-card {
+    -fx-background-color: linear-gradient(to right, #4A6CF7, #5A8BFF); /* blue gradient */
+    -fx-background-radius: 10;
+    -fx-padding: 12;
+    -fx-spacing: 10;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0.0, 0, 2);
+}
+
+.ongoing-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: 700;
+    -fx-text-fill: white;
+    -fx-padding: 4 0 8 0;
+}
+.footer-bar {
+    -fx-padding: 16 20;
+    -fx-background-color: transparent;
+}
+
+/* Back to Dashboard button (light-gray classic style) */
+.back-btn {
+    -fx-background-color: linear-gradient(#f9f9f9, #e6e6e6);
+    -fx-text-fill: #000000;
+    -fx-font-size: 13px;
+    -fx-font-weight: normal;
+    -fx-padding: 8 16;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: #c0c0c0;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 4, 0.0, 0, 1);
+}
+/* Hover effect */
+.button.btn.back-btn:hover {
+    -fx-background-color: linear-gradient(#ffffff, #dcdcdc);
+}
+
+/* Pressed effect */
+.button.btn.back-btn:pressed {
+    -fx-background-color: linear-gradient(#dcdcdc, #c0c0c0);
+    -fx-effect: none;
+}
+
