@@ -2,8 +2,6 @@ package controller;
 
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.*;
-
-import javafx.animation.FadeTransition;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
@@ -19,6 +17,7 @@ import javafx.stage.Stage;
 import javafx.util.Callback;
 import javafx.util.Duration;
 import utils.FirestoreService;
+import utils.SessionManager;
 
 import java.io.IOException;
 import java.time.*;
@@ -26,15 +25,40 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
-/**
- * Dose intake history viewer for caretakers.
- *
- * - Real-time (debounced) search on medicine name input.
- * - Also supports Search button, Clear button and date-range filters.
- * - No "Source" column (removed per request).
- */
+/*
+  DoseIntakeHistoryController
+
+  Purpose and responsibilities:
+  - Present a searchable, filterable history of dose events for the elder linked to the currently
+    logged-in caretaker.
+  - Support filtering by medicine name (live/debounced), medicine type, status and date range.
+  - Read schedule day documents from Firestore (users/{elderId}/schedules/{yyyy-MM-dd}) and their
+    "items" subcollection. Apply server-side timestamp range where possible and perform additional
+    client-side filtering (name/type/status) to avoid requiring complex composite indexes.
+  - Build a simple DTO (DoseRecord) per item for table binding and sorting.
+
+  Threading model and safety:
+  - All Firestore network I/O runs off the JavaFX Application Thread in new background threads.
+  - Any UI mutation (table update, alerts, labels) is executed inside Platform.runLater(...) to
+    ensure FX-thread safety.
+  - The controller uses a small debounce (PauseTransition) for the name filter to reduce query churn.
+
+  Important behavioural notes:
+  - The controller relies on SessionManager.getCurrentUserId() to identify the logged-in caretaker.
+  - If the caretaker document contains "elderId", the controller uses it to locate schedule documents.
+  - Date ranges: if the user leaves both from/to empty, the controller defaults to the last 7 days.
+  - When constructing Firestore queries, the controller attempts to query by a timestamp range but
+    gracefully falls back to a full-day fetch if server-side index requirements prevent the range query.
+*/
+
 public class DoseIntakeHistoryController {
 
+    /*
+      FXML-injected controls:
+      - These fields are bound by fx:id values in the corresponding FXML file. They must exist and
+        be non-null after FXMLLoader has initialized the controller.
+      - All interactions with these controls must happen on the JavaFX Application Thread.
+    */
     @FXML private TextField nameFilterField;
     @FXML private ComboBox<String> typeFilterCombo;
     @FXML private ComboBox<String> statusFilterCombo;
@@ -56,31 +80,46 @@ public class DoseIntakeHistoryController {
     @FXML private Label noRecordsLabel;
     @FXML private Label hintLabel;
 
+    /*
+      Formatters and state:
+      - dateFmt/timeFmt/dtFmt are reused for parsing/formatting displayed dates.
+      - currentCaretakerId is the logged-in user's uid (from SessionManager).
+      - resolvedElderId is the elder id read from the caretaker user document; it determines which user's
+        schedules we query.
+    */
     private final DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private final DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
     private final DateTimeFormatter dtFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private String currentCaretakerId = null;
     private String resolvedElderId = null;
-    private String caretakerName;
 
-    // debounce for live typing
+    /*
+      Debounce support:
+      - nameDebounce is a PauseTransition used to delay running searches while the user types in the
+        name filter, reducing the number of background queries.
+      - Configured in initialize() with 350ms delay.
+    */
     private PauseTransition nameDebounce;
 
+    /*
+      initialize()
+      - Set up UI defaults (combos, table column value factories).
+      - Attach event handlers for search/clear/back buttons.
+      - Wire the name field to a debounced search.
+      - Kick off caretaker detection which will trigger the first search once the elder is resolved.
+      - All heavy work (Firestore reads) happens on background threads started from here or helper methods.
+    */
     @FXML
     public void initialize() {
-        // Setup status combo options
         List<String> statuses = Arrays.asList("Any", "taken", "missed", "hasnt_arrived", "in_snooze_duration");
         statusFilterCombo.getItems().setAll(statuses);
         statusFilterCombo.setValue("Any");
 
-        // type combo: allow common ones
         typeFilterCombo.getItems().setAll("Any", "Tablet", "Capsule", "Syrup", "Injection", "Other");
         typeFilterCombo.setValue("Any");
 
-        // Wire buttons
         searchBtn.setOnAction(e -> {
-            // cancel debounce and run immediate search
             if (nameDebounce != null) nameDebounce.stop();
             runSearch();
         });
@@ -90,7 +129,6 @@ public class DoseIntakeHistoryController {
         });
         backBtn.setOnAction(e -> handleBack());
 
-        // configure table columns
         colDate.setCellValueFactory(new PropertyValueFactory<>("dateStr"));
         colTime.setCellValueFactory(new PropertyValueFactory<>("timeStr"));
         colName.setCellValueFactory(new PropertyValueFactory<>("name"));
@@ -108,50 +146,56 @@ public class DoseIntakeHistoryController {
 
         colLoggedAt.setCellValueFactory(new PropertyValueFactory<>("loggedAtStr"));
 
-        // nicer table defaults
         tableView.setPlaceholder(new Label("No dose records to display."));
         tableView.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
 
-        // debounce for name filter: 350ms
         nameDebounce = new PauseTransition(Duration.millis(350));
         nameFilterField.textProperty().addListener((obs, oldV, newV) -> {
-            // restart debounce
             nameDebounce.stop();
             nameDebounce.setOnFinished(ev -> runSearch());
             nameDebounce.playFromStart();
         });
 
-        // detect logged-in caretaker and load
         detectLoggedInCaretaker();
 
-        // default hint
         hintLabel.setText("Tip: leave date range empty to search last 7 days");
     }
 
+    /*
+      detectLoggedInCaretaker()
+      - Uses SessionManager.getCurrentUserId() to find the logged-in user id.
+      - Loads the user document from Firestore and validates the "caretaker" role.
+      - If the user document contains "elderId", it stores it in resolvedElderId and triggers runSearch().
+      - All Firestore network calls are performed on a background thread (new Thread).
+      - Errors and UI messages are posted to the FX thread with Platform.runLater.
+    */
     private void detectLoggedInCaretaker() {
         new Thread(() -> {
             try {
-                Firestore db = FirestoreService.getFirestore();
-                List<QueryDocumentSnapshot> docs = db.collection("users")
-                        .whereEqualTo("loggedIn", true)
-                        .whereEqualTo("role", "caretaker")
-                        .get().get().getDocuments();
-
-                if (!docs.isEmpty()) {
-                    QueryDocumentSnapshot caret = docs.get(0);
-                    currentCaretakerId = caret.getId();
-                    Object elderIdObj = caret.get("elderId");
-                    if (elderIdObj != null) {
-                        resolvedElderId = elderIdObj.toString();
-                    }
-                    Object care = docs.get(0).get("username");
-                    
-                    caretakerName=care.toString();
+                String currentUid = SessionManager.getCurrentUserId();
+                if (currentUid == null) {
+                    Platform.runLater(() -> showError("No logged-in caretaker found. Please login."));
+                    return;
                 }
-                Platform.runLater(() -> {
-                    // run initial search (last 7 days) when ready
-                    runSearch();
-                });
+
+                Firestore db = FirestoreService.getFirestore();
+                DocumentSnapshot caretSnap = db.collection("users").document(currentUid).get().get();
+                if (!caretSnap.exists()) {
+                    Platform.runLater(() -> showError("Logged-in caretaker not found in database."));
+                    return;
+                }
+
+                String role = caretSnap.getString("role");
+                if (role == null || !"caretaker".equalsIgnoreCase(role)) {
+                    Platform.runLater(() -> showError("Current user is not a caretaker."));
+                    return;
+                }
+
+                currentCaretakerId = currentUid;
+                Object elderIdObj = caretSnap.get("elderId");
+                if (elderIdObj != null) resolvedElderId = elderIdObj.toString();
+
+                Platform.runLater(() -> runSearch());
             } catch (InterruptedException | ExecutionException ex) {
                 ex.printStackTrace();
                 Platform.runLater(() -> showError("Failed to detect logged-in caretaker."));
@@ -159,6 +203,11 @@ public class DoseIntakeHistoryController {
         }).start();
     }
 
+    /*
+      clearFilters()
+      - Reset all filter UI controls to their defaults and run a fresh search.
+      - Uses runSearch() to update the table.
+    */
     private void clearFilters() {
         nameFilterField.clear();
         typeFilterCombo.setValue("Any");
@@ -168,10 +217,24 @@ public class DoseIntakeHistoryController {
         runSearch();
     }
 
-    /**
-     * Performs the query across the selected date range (or last 7 days).
-     * Note: called from FX thread, but the actual Firestore work is on a background Thread.
-     */
+    /*
+      runSearch()
+      - Main search logic executed on demand (via search button, clear, debounce finish, or after caretaker detection).
+      - Steps:
+          1) Prepare and normalize filters (name/type/status).
+          2) Compute a date range (default last 7 days when both empty).
+          3) Clamp large ranges (max 120 days window).
+          4) Convert start/end into Firestore Timestamps (startTs/endTs) to attempt server-side timestamp filtering.
+          5) Iterate days from start..end and read schedules/{yyyy-MM-dd} documents.
+          6) For each day document, attempt to query the items subcollection using a baseTimestamp range.
+             If the range query fails due to index restrictions, fall back to fetching all items for that day.
+          7) Build DoseRecord objects via DoseRecord.fromSnapshot(...) and perform client-side filtering by name/type/status.
+          8) Sort results by baseTimestamp descending and update the TableView on the FX thread.
+      - Important points:
+          - Query fallback prevents the UI from failing when composite indexes are not present; it trades bandwidth
+            for robustness.
+          - Client-side filtering ensures flexible comparisons (case-insensitive name contains, exact type/status match).
+    */
     private void runSearch() {
         noRecordsLabel.setVisible(false);
         tableView.getItems().clear();
@@ -185,7 +248,6 @@ public class DoseIntakeHistoryController {
         String typeFilter = (typeFilterCombo.getValue() == null || "Any".equals(typeFilterCombo.getValue())) ? "" : typeFilterCombo.getValue().trim();
         String statusFilter = (statusFilterCombo.getValue() == null || "Any".equals(statusFilterCombo.getValue())) ? "" : statusFilterCombo.getValue().trim();
 
-        // determine date range: if both null -> last 7 days
         LocalDate from = fromDatePicker.getValue();
         LocalDate to = toDatePicker.getValue();
         if (from == null && to == null) {
@@ -197,7 +259,6 @@ public class DoseIntakeHistoryController {
             to = from.plusDays(6);
         }
 
-        // prevent excessively large spans (defensive)
         if (from.plusDays(120).isBefore(to)) {
             to = from.plusDays(120);
         }
@@ -205,10 +266,8 @@ public class DoseIntakeHistoryController {
         LocalDate start = from;
         LocalDate end = to;
 
-        // create timestamps for filters (used server-side if possible)
         ZoneId zid = ZoneId.systemDefault();
         com.google.cloud.Timestamp startTs = com.google.cloud.Timestamp.ofTimeSecondsAndNanos(start.atStartOfDay(zid).toEpochSecond(), 0);
-        // endTs = end day's last second (approx) — using end.plusDays(1).atStartOfDay - 1 sec
         long endEpoch = end.plusDays(1).atStartOfDay(zid).toEpochSecond() - 1;
         com.google.cloud.Timestamp endTs = com.google.cloud.Timestamp.ofTimeSecondsAndNanos(endEpoch, 0);
 
@@ -236,25 +295,28 @@ public class DoseIntakeHistoryController {
                     }
 
                     CollectionReference itemsCol = dayRef.collection("items");
+
+                    // Try to perform an efficient timestamp-range query. If it fails (missing index or server rule),
+                    // fall back to fetching all items for that date, then filter client-side.
                     Query q = itemsCol;
-
-                    // server-side filters where useful
-                    if (!sf.isEmpty()) q = q.whereEqualTo("status", sf);
-                    if (!tf.isEmpty()) q = q.whereEqualTo("type", tf);
-
                     try {
-                        q = q.whereGreaterThanOrEqualTo("baseTimestamp", startTs);
-                        q = q.whereLessThanOrEqualTo("baseTimestamp", endTs);
+                        q = q.whereGreaterThanOrEqualTo("baseTimestamp", startTs)
+                                .whereLessThanOrEqualTo("baseTimestamp", endTs);
                     } catch (Exception ex) {
-                        // ignore if baseTimestamp missing/typed differently
+                        // fallback
                     }
 
-                    List<QueryDocumentSnapshot> items = q.get().get().getDocuments();
+                    List<QueryDocumentSnapshot> items;
+                    try {
+                        items = q.get().get().getDocuments();
+                    } catch (Exception ex) {
+                        items = itemsCol.get().get().getDocuments();
+                    }
+
                     for (QueryDocumentSnapshot it : items) {
                         try {
                             DoseRecord r = DoseRecord.fromSnapshot(it, dateId);
 
-                            // client-side filtering: partial name match + fallback checks
                             boolean ok = true;
                             if (!nf.isEmpty()) {
                                 String n = (r.name == null) ? "" : r.name.toLowerCase();
@@ -277,7 +339,6 @@ public class DoseIntakeHistoryController {
                     d = d.plusDays(1);
                 }
 
-                // sort by baseTimestamp descending (most recent first)
                 collected.sort(Comparator.comparing((DoseRecord rr) -> rr.baseTimestamp == null ? Instant.EPOCH : rr.baseTimestamp.atZone(zid).toInstant()).reversed());
 
                 final List<DoseRecord> finalList = collected;
@@ -296,55 +357,67 @@ public class DoseIntakeHistoryController {
         }).start();
     }
 
+    /*
+      createStatusPill(status)
+      - Build a small HBox containing a stylized Label that visually represents the status.
+      - Styles are applied via CSS classes (moved out of Java). The CSS file should define:
+          .pill { common pill visuals }
+          .pill-taken / .pill-missed / .pill-notyet / .pill-snooze / .pill-unknown
+          .pill-container (alignment)
+      - This removes inline styles and allows theming via the stylesheet.
+    */
     private HBox createStatusPill(String status) {
         Label lbl = new Label();
-        lbl.setStyle("-fx-padding:4 10 4 10; -fx-background-radius:12; -fx-font-size:12; -fx-font-weight:bold;");
-        if (status == null) status = "";
-        switch (status) {
+        lbl.getStyleClass().add("pill");
+
+        String s = (status == null) ? "" : status;
+        switch (s) {
             case "taken":
                 lbl.setText("Taken");
-                lbl.setStyle(lbl.getStyle() + "-fx-background-color:#e6f6ea; -fx-text-fill:#12711b;");
+                lbl.getStyleClass().add("pill-taken");
                 break;
             case "missed":
                 lbl.setText("Missed");
-                lbl.setStyle(lbl.getStyle() + "-fx-background-color:#fdecea; -fx-text-fill:#9c1c0d;");
+                lbl.getStyleClass().add("pill-missed");
                 break;
             case "hasnt_arrived":
                 lbl.setText("Not yet");
-                lbl.setStyle(lbl.getStyle() + "-fx-background-color:#fff7df; -fx-text-fill:#8a6d00;");
+                lbl.getStyleClass().add("pill-notyet");
                 break;
             case "in_snooze_duration":
                 lbl.setText("Snoozing");
-                lbl.setStyle(lbl.getStyle() + "-fx-background-color:#e6f2ff; -fx-text-fill:#1759a6;");
+                lbl.getStyleClass().add("pill-snooze");
                 break;
             default:
-                lbl.setText(status.isEmpty() ? "Unknown" : status);
-                lbl.setStyle(lbl.getStyle() + "-fx-background-color:#f0f0f0; -fx-text-fill:#333;");
+                lbl.setText(s.isEmpty() ? "Unknown" : s);
+                lbl.getStyleClass().add("pill-unknown");
         }
+
         HBox box = new HBox(lbl);
-        box.setStyle("-fx-alignment:center-left;");
+        box.getStyleClass().add("pill-container");
         return box;
     }
 
+    /*
+      showError(msg)
+      - Utility to display an error Alert dialog with the provided message.
+      - Blocks until the user dismisses the dialog (showAndWait()) — keep messages concise to avoid blocking UX.
+    */
     private void showError(String msg) {
         Alert a = new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK);
         a.showAndWait();
     }
 
+    /*
+      handleBack()
+      - Navigate back to the caretaker dashboard by loading the FXML and replacing the current scene.
+      - Any IO exceptions are printed and an error dialog is shown to the user.
+    */
     private void handleBack() {
         try {
-        	FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
-            Parent root = loader.load();
-            
-            // Get the controller and initialize it with the caretaker username
-            CaretakerDashboardController controller = loader.getController();
-            controller.initializeCaretaker(caretakerName); // Pass the username here
-            FadeTransition ft = new FadeTransition(Duration.millis(400), root);
-            ft.setFromValue(0);
-            ft.setToValue(1);
-            ft.play();
-            javafx.stage.Stage stage = (javafx.stage.Stage) backBtn.getScene().getWindow();
-            stage.setScene(new javafx.scene.Scene(root));
+            Parent root = FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
+            Stage stage = (Stage) backBtn.getScene().getWindow();
+            stage.setScene(new Scene(root));
             stage.centerOnScreen();
         } catch (IOException e) {
             e.printStackTrace();
@@ -352,9 +425,22 @@ public class DoseIntakeHistoryController {
         }
     }
 
-    /**
-     * Simple DTO representing a dose record (table row)
-     */
+    /*
+      DoseRecord DTO
+      - Represents a single dose/ scheduled item row to display in the TableView.
+      - Fields:
+          id, medicineId, name, type, amount, timeStr, date, baseTimestamp (LocalDateTime), status,
+          loggedAt (Instant), loggedAtStr (human-friendly).
+      - Derived property getters are provided for the table's PropertyValueFactory usage (getDateStr, getTimeStr etc.)
+      - fromSnapshot(DocumentSnapshot, dateId):
+          * Responsible for converting Firestore document fields into a DoseRecord instance.
+          * Handles multiple possible field shapes for timestamps:
+              - baseTimestamp expected to be a com.google.cloud.Timestamp
+              - takenAt / missedLoggedAt / createdAt are considered (priority given to takenAt, then missedLoggedAt then createdAt)
+          * Converts com.google.cloud.Timestamp into java.time.Instant and localizes to ZoneId.systemDefault() for baseTimestamp storage.
+          * Produces loggedAtStr using the controller's dtFmt and ZoneId.systemDefault() for display.
+      - This DTO is intentionally simple and mutable to keep creation straightforward when iterating Firestore results.
+    */
     public static class DoseRecord {
         public String id;
         public String medicineId;
@@ -368,7 +454,7 @@ public class DoseIntakeHistoryController {
         public Instant loggedAt; // takenAt / missedLoggedAt if available
         public String loggedAtStr;
 
-        // derived properties for table binding
+        // Getters used by PropertyValueFactory bindings in the TableView
         public String getDateStr() { return date == null ? "" : date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")); }
         public String getTimeStr() { return timeStr == null ? "" : timeStr; }
         public String getName() { return name == null ? "" : name; }
@@ -376,6 +462,15 @@ public class DoseIntakeHistoryController {
         public String getAmount() { return amount == null ? "" : amount; }
         public String getLoggedAtStr() { return loggedAtStr == null ? "" : loggedAtStr; }
 
+        /*
+          fromSnapshot(d, dateId)
+          - Convert a Firestore DocumentSnapshot into a DoseRecord.
+          - Robust to missing fields and differences in timestamp types.
+          - Parsing strategy:
+              baseTimestamp -> LocalDateTime (if present and is com.google.cloud.Timestamp)
+              loggedAt -> takenAt (preferred) || missedLoggedAt || createdAt (fallback)
+              loggedAtStr -> formatted with pattern "yyyy-MM-dd HH:mm:ss" in the system zone if loggedAt present
+        */
         static DoseRecord fromSnapshot(DocumentSnapshot d, String dateId) {
             DoseRecord r = new DoseRecord();
             r.id = d.getId();
@@ -394,7 +489,6 @@ public class DoseIntakeHistoryController {
                 r.baseTimestamp = LocalDateTime.ofInstant(inst, ZoneId.systemDefault());
             } else r.baseTimestamp = null;
 
-            // extract loggedAt: check takenAt, missedLoggedAt, createdAt fallbacks
             try {
                 Object takenAt = d.get("takenAt");
                 if (takenAt instanceof com.google.cloud.Timestamp) {

@@ -32,12 +32,12 @@
                 <HBox spacing="10" alignment="CENTER_RIGHT">
                     <children>
                         <VBox alignment="CENTER_RIGHT" spacing="2">
-                            <Label fx:id="caretakerNameLabel" text="Ayesha" styleClass="profile-name"/>
+                            <Label fx:id="caretakerNameLabel" text="" styleClass="profile-name"/>
                             <Label text="Caretaker" styleClass="profile-role"/>
                         </VBox>
 
                         <StackPane styleClass="avatar">
-                            <Label fx:id="avatarInitialsLabel" text="AS" styleClass="avatar-text"/>
+                            <Label fx:id="avatarInitialsLabel" text="" styleClass="avatar-text"/>
                         </StackPane>
                     </children>
                 </HBox>

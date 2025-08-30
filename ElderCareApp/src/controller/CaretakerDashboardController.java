@@ -1,6 +1,5 @@
 package controller;
 
-import javafx.animation.FadeTransition;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -9,7 +8,6 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
-import javafx.util.Duration;
 import javafx.scene.control.Alert;
 import javafx.scene.layout.Region;
 
@@ -17,11 +15,26 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+import com.google.cloud.firestore.DocumentReference;
+import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.FieldValue;
+import com.google.cloud.firestore.Firestore;
+import javafx.application.Platform;
+import javafx.scene.Scene;
+import utils.FirestoreService;
+import utils.SessionManager;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+
 public class CaretakerDashboardController {
 
     @FXML private Label caretakerNameLabel;
     @FXML private StackPane contentPane;
 
+    // The following may be null if the corresponding controls are in a child FXML
+    // loaded into contentPane rather than in the main caretaker_dashboard.fxml
     @FXML private Label todayDosesLabel;
     @FXML private Label completedLabel;
     @FXML private Label pendingLabel;
@@ -41,38 +54,99 @@ public class CaretakerDashboardController {
     private int todayDoses = 5;
     private int completed = 3;
 
-    public void initializeCaretaker(String username) {
-        caretakerNameLabel.setText(username);
-        if (username != null && !username.trim().isEmpty()) {
-            String[] nameParts = username.split(" ");
-            String initials = "";
-            if (nameParts.length > 0) {
-                initials += nameParts[0].charAt(0);
-                if (nameParts.length > 1) {
-                    initials += nameParts[nameParts.length - 1].charAt(0);
-                }
-            }
-            avatarInitialsLabel.setText(initials.toUpperCase());
-        }
-    }
-
     @FXML
     public void initialize() {
         clearActiveButtons();
+        // Load the default view immediately (this may populate UI controls inside child FXML)
         handleViewToday();
+        // Start loading caretaker name (will update UI when ready)
+        loadCaretakerNameFromSession();
     }
 
-    /* ---------- Stats ---------- */
+    private void loadCaretakerNameFromSession() {
+        String uid = SessionManager.getCurrentUserId();
+        if (uid == null || uid.trim().isEmpty()) {
+            initializeCaretaker("");
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                Firestore db = FirestoreService.getFirestore();
+                DocumentSnapshot doc = db.collection("users").document(uid).get().get();
+
+                String name = null;
+                if (doc != null && doc.exists()) {
+                    for (String field : Arrays.asList("displayName", "name", "fullName", "username")) {
+                        Object o = doc.get(field);
+                        if (o instanceof String && !((String)o).trim().isEmpty()) {
+                            name = (String) o;
+                            break;
+                        }
+                    }
+                }
+
+                final String finalName;
+                if (name == null || name.trim().isEmpty()) {
+                    finalName = uid.length() > 8 ? uid.substring(0, 8) : uid;
+                } else {
+                    finalName = name;
+                }
+
+                Platform.runLater(() -> initializeCaretaker(finalName));
+            } catch (Exception e) {
+                final String fallback = uid.length() > 8 ? uid.substring(0, 8) : uid;
+                Platform.runLater(() -> initializeCaretaker(fallback));
+            }
+        }).start();
+    }
+
+    /**
+     * Update profile name & avatar initials.
+     * Will only attempt to refresh stats if the stat controls are present (non-null).
+     */
+    public void initializeCaretaker(String username) {
+        if (caretakerNameLabel != null) caretakerNameLabel.setText(username == null ? "" : username);
+        if (avatarInitialsLabel != null) {
+            if (username != null && !username.trim().isEmpty()) {
+                String[] nameParts = username.trim().split("\\s+");
+                String initials = "";
+                if (nameParts.length > 0 && nameParts[0].length() > 0) {
+                    initials += nameParts[0].charAt(0);
+                    if (nameParts.length > 1 && nameParts[nameParts.length - 1].length() > 0) {
+                        initials += nameParts[nameParts.length - 1].charAt(0);
+                    }
+                } else if (username.length() >= 1) {
+                    initials = username.substring(0, 1);
+                }
+                avatarInitialsLabel.setText(initials.toUpperCase());
+            } else {
+                avatarInitialsLabel.setText("");
+            }
+        }
+
+        // Only refresh stats when the stat controls exist (defensive to avoid NPE)
+        if (todayDosesLabel != null || completedLabel != null || pendingLabel != null
+                || adherenceIndicator != null || adherencePercentLabel != null || nextDoseLabel != null) {
+            refreshStats();
+        }
+    }
+
+    /* ---------- Stats (defensive: null-checks) ---------- */
     private void refreshStats() {
-        todayDosesLabel.setText(String.valueOf(todayDoses));
-        completedLabel.setText(String.valueOf(completed));
+        // compute derived values
         int pending = Math.max(0, todayDoses - completed);
-        pendingLabel.setText(String.valueOf(pending));
         double adherence = todayDoses == 0 ? 0.0 : ((double) completed) / todayDoses;
+        LocalDateTime next = LocalDateTime.now().plusHours(2);
+        String nextFormatted = next.format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm"));
+
+        // update only controls that are non-null
+        if (todayDosesLabel != null) todayDosesLabel.setText(String.valueOf(todayDoses));
+        if (completedLabel != null) completedLabel.setText(String.valueOf(completed));
+        if (pendingLabel != null) pendingLabel.setText(String.valueOf(pending));
         if (adherenceIndicator != null) adherenceIndicator.setProgress(adherence);
         if (adherencePercentLabel != null) adherencePercentLabel.setText(String.format("%.0f%%", adherence * 100));
-        LocalDateTime next = LocalDateTime.now().plusHours(2);
-        if (nextDoseLabel != null) nextDoseLabel.setText(next.format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm")));
+        if (nextDoseLabel != null) nextDoseLabel.setText(nextFormatted);
     }
 
     /* ---------- UI helpers ---------- */
@@ -94,32 +168,20 @@ public class CaretakerDashboardController {
         }
     }
 
-    /* ---------- Content loader ---------- */
-    private void loadIntoContentWithFade(String fxmlPath) {
+    /* ---------- Content loader (no animation) ---------- */
+    private void loadIntoContent(String fxmlPath) {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(fxmlPath));
             Parent node = loader.load();
+            contentPane.getChildren().clear();
+            contentPane.getChildren().add(node);
 
-            if (!contentPane.getChildren().isEmpty()) {
-                FadeTransition ftOut = new FadeTransition(Duration.millis(160), contentPane.getChildren().get(0));
-                ftOut.setFromValue(1.0);
-                ftOut.setToValue(0.0);
-                ftOut.setOnFinished(evt -> {
-                    contentPane.getChildren().clear();
-                    contentPane.getChildren().add(node);
-                    FadeTransition ftIn = new FadeTransition(Duration.millis(220), node);
-                    ftIn.setFromValue(0.0);
-                    ftIn.setToValue(1.0);
-                    ftIn.play();
-                });
-                ftOut.play();
-            } else {
-                contentPane.getChildren().add(node);
-                FadeTransition ftIn = new FadeTransition(Duration.millis(220), node);
-                ftIn.setFromValue(0.0);
-                ftIn.setToValue(1.0);
-                ftIn.play();
-            }
+            // After loading content, try refreshing stats again (if controls are now present)
+            // This is defensive: either the controls are part of this controller's FXML or a child controller.
+            // If they are part of this controller's FXML and were injected lazily, this helps update them.
+            // If stats controls belong to the child controller, consider exposing an API on that child controller
+            // and calling it here (loader.getController()) — optional improvement.
+            refreshStats();
         } catch (IOException e) {
             showError("Could not load screen: " + fxmlPath + "\n" + e.getMessage());
         }
@@ -130,58 +192,76 @@ public class CaretakerDashboardController {
     @FXML
     private void handleCreateSchedule() {
         setActiveButton(createScheduleBtn);
-        loadIntoContentWithFade("/fxml/medicine_schedule.fxml");
+        loadIntoContent("/fxml/medicine_schedule.fxml");
     }
 
     @FXML
     private void handleViewToday() {
         setActiveButton(viewTodayBtn);
-        loadIntoContentWithFade("/fxml/todays_schedule.fxml");
+        loadIntoContent("/fxml/todays_schedule.fxml");
     }
 
     @FXML
     private void handleModifySchedule() {
         setActiveButton(modifyScheduleBtn);
-        loadIntoContentWithFade("/fxml/edit_medicine_doses.fxml");
+        loadIntoContent("/fxml/edit_medicine_doses.fxml");
     }
 
     @FXML
     private void handlePastDoses() {
         setActiveButton(pastDoseBtn);
-        loadIntoContentWithFade("/fxml/medicine_history.fxml");
+        loadIntoContent("/fxml/medicine_history.fxml");
     }
 
-    // New feature handlers from teammate's dashboard
     @FXML
     private void handleDoseIntakeHistory() {
         setActiveButton(doseIntakeHistoryBtn);
-        loadIntoContentWithFade("/fxml/dose_intake_history.fxml");
+        loadIntoContent("/fxml/dose_intake_history.fxml");
     }
-
 
     @FXML
     private void handleSignOut() {
-        try {
-            Parent loginRoot = FXMLLoader.load(getClass().getResource("/fxml/login.fxml"));
-            Stage stage = (Stage) contentPane.getScene().getWindow();
-            stage.getScene().setRoot(loginRoot);
-        } catch (IOException e) {
-            showError("Could not load login screen: " + e.getMessage());
-        }
+        new Thread(() -> {
+            try {
+                String uid = SessionManager.getCurrentUserId();
+
+                if (uid != null) {
+                    try {
+                        Firestore db = FirestoreService.getFirestore();
+                        DocumentReference userRef = db.collection("users").document(uid);
+
+                        Map<String, Object> updates = new HashMap<>();
+                        updates.put("lastSessionId", FieldValue.delete());
+
+                        try {
+                            userRef.update(updates).get();
+                        } catch (Exception e) {
+                            System.out.println("Warning: failed to clear remote session on logout: " + e.getMessage());
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Warning: logout remote cleanup failed: " + e.getMessage());
+                    }
+                }
+            } finally {
+                SessionManager.clear();
+                Platform.runLater(() -> {
+                    try {
+                        Parent root = FXMLLoader.load(getClass().getResource("/fxml/login.fxml"));
+                        Stage stage = (Stage) Stage.getWindows().filtered(window -> window.isShowing()).get(0);
+                        stage.setScene(new Scene(root));
+                        stage.centerOnScreen();
+                    } catch (IOException ex) {
+                        ex.printStackTrace();
+                    }
+                });
+            }
+        }).start();
     }
 
     /* ---------- Alerts ---------- */
     private void showError(String msg) {
         Alert a = new Alert(Alert.AlertType.ERROR);
         a.setHeaderText("Error");
-        a.setContentText(msg);
-        a.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
-        a.showAndWait();
-    }
-
-    private void showInfo(String msg) {
-        Alert a = new Alert(Alert.AlertType.INFORMATION);
-        a.setHeaderText(null);
         a.setContentText(msg);
         a.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
         a.showAndWait();

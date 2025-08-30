@@ -227,3 +227,46 @@
 .combo-box .list-cell:filled:hover {
     -fx-background-color: #eff6ff;
 }
+
+/* ================================
+   New: Pill status styles (moved from Java inline styles)
+   ================================ */
+
+/* container for a pill cell */
+.pill-container {
+    -fx-alignment: center-left;
+}
+
+/* base pill */
+.pill {
+    -fx-padding: 4 10 4 10;
+    -fx-background-radius: 12;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+/* specific status themes */
+.pill-taken {
+    -fx-background-color: #e6f6ea;
+    -fx-text-fill: #12711b;
+}
+
+.pill-missed {
+    -fx-background-color: #fdecea;
+    -fx-text-fill: #9c1c0d;
+}
+
+.pill-notyet {
+    -fx-background-color: #fff7df;
+    -fx-text-fill: #8a6d00;
+}
+
+.pill-snooze {
+    -fx-background-color: #e6f2ff;
+    -fx-text-fill: #1759a6;
+}
+
+.pill-unknown {
+    -fx-background-color: #f0f0f0;
+    -fx-text-fill: #333;
+}

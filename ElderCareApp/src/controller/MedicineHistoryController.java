@@ -2,20 +2,17 @@ package controller;
 
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.*;
-
-import javafx.animation.FadeTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.fxml.FXML;
-import javafx.scene.control.*;
-import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.util.Duration;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.*;
 import utils.FirestoreService;
+import utils.SessionManager;
 
 import java.io.IOException;
 import java.time.*;
@@ -26,14 +23,9 @@ import java.util.concurrent.ExecutionException;
 /**
  * MedicineHistoryController
  *
- * - Determines completion by preferring forceEndedAt as cutoff; if null then uses lastDose.timestamp.
- * - If firstDose/lastDose timestamps are missing in Firestore they are computed and written back.
- * - Populates completed vs ongoing lists using the computed/stored cutoff timestamp.
- *
- * Filtering behavior:
- *   A medicine is included by a date filter only when BOTH:
- *     - its start date is inside the filter window (start between from..to)
- *     - its cutoff date (forceEndedAt OR lastDose/end fallback) is inside the filter window
+ * - Prefers forceEndedAt as cutoff; otherwise uses lastDose timestamp (or computes it).
+ * - Writes missing firstDose/lastDose timestamps back to Firestore as a best-effort.
+ * - Uses SessionManager to locate the current caretaker and their linked elder (falls back to legacy query).
  */
 public class MedicineHistoryController {
 
@@ -59,11 +51,9 @@ public class MedicineHistoryController {
     @FXML private DatePicker ongoingFromDate;
     @FXML private DatePicker ongoingToDate;
 
-    // Back button
     @FXML private Button backButton;
 
     private String resolvedElderId = null;
-    private String caretakerName;
     private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private ObservableList<MedicineRecord> completedList = FXCollections.observableArrayList();
@@ -75,22 +65,21 @@ public class MedicineHistoryController {
         setupFilters();
         detectLoggedInCaretaker();
 
-        // back button handler
         if (backButton != null) backButton.setOnAction(e -> handleBack());
     }
 
     private void setupColumns() {
-        completedMedNameCol.setCellValueFactory(new PropertyValueFactory<>("name"));
-        completedMedTypeCol.setCellValueFactory(new PropertyValueFactory<>("type"));
-        completedMedAmountCol.setCellValueFactory(new PropertyValueFactory<>("amount"));
-        completedMedDosesCol.setCellValueFactory(new PropertyValueFactory<>("dosesTaken"));
-        completedMedDateRangeCol.setCellValueFactory(new PropertyValueFactory<>("dateRange"));
+        completedMedNameCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("name"));
+        completedMedTypeCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("type"));
+        completedMedAmountCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("amount"));
+        completedMedDosesCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("dosesTaken"));
+        completedMedDateRangeCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("dateRange"));
 
-        ongoingMedNameCol.setCellValueFactory(new PropertyValueFactory<>("name"));
-        ongoingMedTypeCol.setCellValueFactory(new PropertyValueFactory<>("type"));
-        ongoingMedAmountCol.setCellValueFactory(new PropertyValueFactory<>("amount"));
-        ongoingMedDosesCol.setCellValueFactory(new PropertyValueFactory<>("dosesTaken"));
-        ongoingMedDateRangeCol.setCellValueFactory(new PropertyValueFactory<>("dateRange"));
+        ongoingMedNameCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("name"));
+        ongoingMedTypeCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("type"));
+        ongoingMedAmountCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("amount"));
+        ongoingMedDosesCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("dosesTaken"));
+        ongoingMedDateRangeCol.setCellValueFactory(new javafx.scene.control.cell.PropertyValueFactory<>("dateRange"));
     }
 
     private void setupFilters() {
@@ -117,13 +106,6 @@ public class MedicineHistoryController {
         ongoingMedicinesTable.setItems(filteredOngoing);
     }
 
-    /**
-     * Filter logic changed to require BOTH:
-     *  - startDate is inside filter window
-     *  - cutoffDate is inside filter window
-     *
-     * If a from or to is null, that side is considered unbounded.
-     */
     private void filterCompletedByDate(FilteredList<MedicineRecord> list) {
         LocalDate from = completedFromDate.getValue();
         LocalDate to = completedToDate.getValue();
@@ -131,16 +113,11 @@ public class MedicineHistoryController {
             if (from == null && to == null) return true;
 
             LocalDate start = med.getStartDate();
-            LocalDate cutoff = med.getCutoffDate(); // cutoff (forceEndedAt or lastDose/end fallback)
-
-            // if cutoff is null (extremely unlikely), use endDate fallback
+            LocalDate cutoff = med.getCutoffDate();
             if (cutoff == null) cutoff = med.getEndDate();
 
-            // start must be within [from,to]
             if (from != null && start.isBefore(from)) return false;
             if (to != null && start.isAfter(to)) return false;
-
-            // cutoff must be within [from,to]
             if (from != null && cutoff.isBefore(from)) return false;
             if (to != null && cutoff.isAfter(to)) return false;
 
@@ -156,14 +133,10 @@ public class MedicineHistoryController {
 
             LocalDate start = med.getStartDate();
             LocalDate cutoff = med.getCutoffDate();
-
             if (cutoff == null) cutoff = med.getEndDate();
 
-            // start must be within [from,to]
             if (from != null && start.isBefore(from)) return false;
             if (to != null && start.isAfter(to)) return false;
-
-            // cutoff must be within [from,to]
             if (from != null && cutoff.isBefore(from)) return false;
             if (to != null && cutoff.isAfter(to)) return false;
 
@@ -171,10 +144,41 @@ public class MedicineHistoryController {
         });
     }
 
+    /**
+     * Prefer SessionManager to find logged-in caretaker -> linked elderId.
+     * Fallback: legacy query whereEqualTo("loggedIn", true).
+     */
     private void detectLoggedInCaretaker() {
         new Thread(() -> {
-            Firestore db = FirestoreService.getFirestore();
             try {
+                // Primary: session manager
+                if (SessionManager.isLoggedIn() && SessionManager.getCurrentUserRole() != null
+                        && SessionManager.getCurrentUserRole().toLowerCase().contains("caretaker")) {
+                    String caretId = SessionManager.getCurrentUserId();
+                    try {
+                        DocumentSnapshot caret = FirestoreService.getFirestore().collection("users").document(caretId).get().get();
+                        if (caret.exists() && caret.contains("elderId")) {
+                            resolvedElderId = caret.getString("elderId");
+                            loadMedicineHistory();
+                            return;
+                        } else {
+                            // no linked elder - clear lists
+                            Platform.runLater(() -> {
+                                completedList.clear();
+                                ongoingList.clear();
+                                completedMedicinesTable.refresh();
+                                ongoingMedicinesTable.refresh();
+                            });
+                            return;
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        // fall through to legacy fallback
+                    }
+                }
+
+                // Fallback legacy query
+                Firestore db = FirestoreService.getFirestore();
                 List<QueryDocumentSnapshot> docs = db.collection("users")
                         .whereEqualTo("loggedIn", true)
                         .whereEqualTo("role", "caretaker")
@@ -185,11 +189,16 @@ public class MedicineHistoryController {
                     if (elderIdObj != null) {
                         resolvedElderId = elderIdObj.toString();
                         loadMedicineHistory();
+                        return;
                     }
-                    Object care = docs.get(0).get("username");
-                    
-                    caretakerName=care.toString();
                 }
+                // nothing found
+                Platform.runLater(() -> {
+                    completedList.clear();
+                    ongoingList.clear();
+                    completedMedicinesTable.refresh();
+                    ongoingMedicinesTable.refresh();
+                });
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
             }
@@ -215,205 +224,197 @@ public class MedicineHistoryController {
                 LocalDate today = LocalDate.now(zid);
 
                 for (QueryDocumentSnapshot med : meds) {
-                    String medId = med.getId();
-                    String name = med.getString("name");
-                    String type = med.getString("type");
-                    String amount = med.getString("amount");
-
-                    DocumentReference medRef = med.getReference();
-
-                    // activePeriod handling (may be Map with startDate/endDate as String or Timestamp)
-                    @SuppressWarnings("unchecked")
-                    java.util.Map<String, Object> activePeriod = (java.util.Map<String, Object>) med.get("activePeriod");
-                    LocalDate start = parseDate(activePeriod == null ? null : activePeriod.get("startDate"));
-                    LocalDate end = parseDate(activePeriod == null ? null : activePeriod.get("endDate"));
-
-                    if (start == null || end == null) {
-                        // Skip medicine entries without valid activePeriod
-                        continue;
-                    }
-
-                    String dateRange = start + " to " + end;
-
-                    @SuppressWarnings("unchecked")
-                    List<String> times = (List<String>) med.get("times");
-
-                    // --------------- New logic: prefer forceEndedAt, otherwise check lastDose ---------------
-                    Instant cutoffInstant = null;
-
-                    // Try forceEndedAt first
-                    Object forceEndedAtObj = med.get("forceEndedAt");
-                    cutoffInstant = extractInstantFromObject(forceEndedAtObj);
-
-                    // If forceEndedAt is null, then check lastDose
-                    Instant lastDoseInstant = null;
-                    String lastDoseTimeStr = null;
-                    Object lastDoseObj = med.get("lastDose");
-                    if (cutoffInstant == null) {
-                        if (lastDoseObj instanceof java.util.Map) {
-                            Object tsObj = ((java.util.Map<?, ?>) lastDoseObj).get("timestamp");
-                            if (tsObj instanceof Timestamp) {
-                                lastDoseInstant = ((Timestamp) tsObj).toDate().toInstant();
-                            } else if (tsObj instanceof java.util.Date) {
-                                lastDoseInstant = ((java.util.Date) tsObj).toInstant();
-                            }
-                            Object timeObj = ((java.util.Map<?, ?>) lastDoseObj).get("time");
-                            lastDoseTimeStr = timeObj == null ? null : timeObj.toString();
-                        }
-
-                        // If lastDose timestamp missing, compute it from end + latest time and persist (best effort)
-                        if (lastDoseInstant == null) {
-                            String latestTime = "23:59";
-                            if (times != null && !times.isEmpty()) {
-                                try {
-                                    latestTime = times.stream()
-                                            .map(String::trim)
-                                            .filter(t -> {
-                                                try { LocalTime.parse(t); return true; } catch (Exception ex) { return false; }
-                                            })
-                                            .max(Comparator.comparing(LocalTime::parse))
-                                            .orElse("23:59");
-                                } catch (Exception ex) {
-                                    latestTime = "23:59";
-                                }
-                            }
-                            lastDoseTimeStr = latestTime;
-                            try {
-                                LocalTime lastLt = LocalTime.parse(latestTime);
-                                LocalDateTime lastLdt = LocalDateTime.of(end, lastLt);
-                                lastDoseInstant = lastLdt.atZone(zid).toInstant();
-                                Timestamp lastDoseTs = Timestamp.ofTimeSecondsAndNanos(lastDoseInstant.getEpochSecond(), lastDoseInstant.getNano());
-                                Map<String, Object> lastDoseMap = Map.of(
-                                        "date", end.toString(),
-                                        "time", latestTime,
-                                        "timestamp", lastDoseTs
-                                );
-                                try {
-                                    medRef.update("lastDose", lastDoseMap).get();
-                                } catch (Exception updateEx) {
-                                    updateEx.printStackTrace();
-                                }
-                            } catch (Exception ex) {
-                                ex.printStackTrace();
-                                lastDoseInstant = null;
-                            }
-                        }
-
-                        // Now use lastDoseInstant as cutoff if present
-                        cutoffInstant = lastDoseInstant;
-                    }
-
-                    // Ensure firstDose exists (compute & persist if missing) - best-effort
                     try {
-                        Object firstDoseObj = med.get("firstDose");
-                        boolean needFirstDoseSave = false;
-                        Map<String, Object> firstDoseMap = null;
-                        if (!(firstDoseObj instanceof java.util.Map) || ((java.util.Map<?, ?>) firstDoseObj).get("timestamp") == null) {
-                            // compute earliest time or default to 00:00
-                            String firstTime = "00:00";
-                            if (times != null && !times.isEmpty()) {
-                                try {
-                                    firstTime = times.stream()
-                                            .map(String::trim)
-                                            .filter(t -> {
-                                                try { LocalTime.parse(t); return true; } catch (Exception ex) { return false; }
-                                            })
-                                            .min(Comparator.comparing(LocalTime::parse))
-                                            .orElse("00:00");
-                                } catch (Exception ex) {
-                                    firstTime = "00:00";
-                                }
-                            }
-                            try {
-                                LocalTime ft = LocalTime.parse(firstTime);
-                                LocalDateTime fdt = LocalDateTime.of(start, ft);
-                                Instant firstInstant = fdt.atZone(zid).toInstant();
-                                Timestamp firstTs = Timestamp.ofTimeSecondsAndNanos(firstInstant.getEpochSecond(), firstInstant.getNano());
-                                firstDoseMap = Map.of(
-                                        "date", start.toString(),
-                                        "time", firstTime,
-                                        "timestamp", firstTs
-                                );
-                                needFirstDoseSave = true;
-                            } catch (Exception ex) {
-                                ex.printStackTrace();
-                            }
-                        }
-                        if (needFirstDoseSave && firstDoseMap != null) {
-                            try {
-                                medRef.update("firstDose", firstDoseMap).get();
-                            } catch (Exception ex) {
-                                ex.printStackTrace();
-                            }
-                        }
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                    }
+                        String medId = med.getId();
+                        String name = med.getString("name");
+                        String type = med.getString("type");
+                        String amount = med.getString("amount");
+                        DocumentReference medRef = med.getReference();
 
-                    // Determine completion using cutoffInstant (if present)
-                    boolean isCompleted = false;
-                    if (cutoffInstant != null) {
-                        isCompleted = !nowInstant.isBefore(cutoffInstant); // now >= cutoffInstant
-                    } else {
-                        // Fallback: if today is after or equal to end date -> completed
-                        if (!today.isBefore(end)) isCompleted = true;
-                    }
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> activePeriod = (Map<String, Object>) med.get("activePeriod");
+                        LocalDate start = parseDate(activePeriod == null ? null : activePeriod.get("startDate"));
+                        LocalDate end = parseDate(activePeriod == null ? null : activePeriod.get("endDate"));
 
-                    // Count dosesTaken from history (action == "taken") inside active period
-                    List<QueryDocumentSnapshot> history = medRef.collection("history")
-                            .whereEqualTo("action", "taken")
-                            .get().get().getDocuments();
-
-                    int dosesTaken = 0;
-                    for (QueryDocumentSnapshot h : history) {
-                        String dateStr = h.getString("date");
-                        if (dateStr == null) continue;
-                        LocalDate d;
-                        try {
-                            d = LocalDate.parse(dateStr);
-                        } catch (Exception ex) {
+                        if (start == null || end == null) {
+                            // skip if period missing
                             continue;
                         }
-                        if ((d.isEqual(start) || d.isAfter(start)) && (d.isEqual(end) || d.isBefore(end))) dosesTaken++;
-                    }
 
-                    // read optional params and dose maps
-                    Integer maxSnooze = med.getLong("maxSnoozeMinutes") == null ? null : med.getLong("maxSnoozeMinutes").intValue();
-                    Map<String, Object> firstDoseMapRead = med.get("firstDose") instanceof Map ? (Map<String, Object>) med.get("firstDose") : null;
-                    Map<String, Object> lastDoseMapRead = med.get("lastDose") instanceof Map ? (Map<String, Object>) med.get("lastDose") : null;
+                        String dateRange = start + " to " + end;
 
-                    // compute cutoffDate to store in record (use cutoffInstant if present else end)
-                    LocalDate cutoffDate = null;
-                    if (cutoffInstant != null) {
-                        cutoffDate = cutoffInstant.atZone(zid).toLocalDate();
-                    } else {
-                        cutoffDate = end;
-                    }
+                        @SuppressWarnings("unchecked")
+                        List<String> times = (List<String>) med.get("times");
 
-                    // build record (now includes cutoffDate)
-                    MedicineRecord record = new MedicineRecord(
-                            medId,
-                            name,
-                            type,
-                            amount,
-                            dosesTaken,
-                            dateRange,
-                            start,
-                            end,
-                            maxSnooze,
-                            firstDoseMapRead,
-                            lastDoseMapRead,
-                            cutoffDate
-                    );
+                        // determine cutoffInstant: prefer forceEndedAt -> lastDose -> computed last dose (end + latest time)
+                        Instant cutoffInstant = null;
 
-                    if (isCompleted) {
-                        completedList.add(record);
-                    } else {
-                        ongoingList.add(record);
+                        // try forceEndedAt
+                        Object forceEndedAtObj = med.get("forceEndedAt");
+                        cutoffInstant = extractInstantFromObject(forceEndedAtObj);
+
+                        // if null, try lastDose
+                        Instant lastDoseInstant = null;
+                        Object lastDoseObj = med.get("lastDose");
+                        if (cutoffInstant == null) {
+                            lastDoseInstant = extractInstantFromObject(lastDoseObj);
+                            // if lastDose missing, compute from end + latest time and persist (best-effort)
+                            if (lastDoseInstant == null) {
+                                String latestTime = "23:59";
+                                if (times != null && !times.isEmpty()) {
+                                    try {
+                                        latestTime = times.stream()
+                                                .map(String::trim)
+                                                .filter(t -> {
+                                                    try { LocalTime.parse(t); return true; } catch (Exception ex) { return false; }
+                                                })
+                                                .max(Comparator.comparing(LocalTime::parse))
+                                                .orElse("23:59");
+                                    } catch (Exception ex) {
+                                        latestTime = "23:59";
+                                    }
+                                }
+
+                                try {
+                                    LocalTime lt = LocalTime.parse(latestTime);
+                                    LocalDateTime ldt = LocalDateTime.of(end, lt);
+                                    lastDoseInstant = ldt.atZone(zid).toInstant();
+                                    Timestamp lastDoseTs = Timestamp.ofTimeSecondsAndNanos(lastDoseInstant.getEpochSecond(), lastDoseInstant.getNano());
+
+                                    Map<String, Object> lastDoseMap = Map.of(
+                                            "date", end.toString(),
+                                            "time", latestTime,
+                                            "timestamp", lastDoseTs
+                                    );
+                                    try {
+                                        medRef.update("lastDose", lastDoseMap).get();
+                                    } catch (Exception updateEx) {
+                                        // ignore persist failure (best-effort)
+                                        updateEx.printStackTrace();
+                                    }
+                                } catch (Exception ex) {
+                                    ex.printStackTrace();
+                                    lastDoseInstant = null;
+                                }
+                            }
+                            cutoffInstant = lastDoseInstant;
+                        }
+
+                        // ensure firstDose exists (best-effort write)
+                        try {
+                            Object firstDoseObj = med.get("firstDose");
+                            boolean needFirstDoseSave = false;
+                            Map<String, Object> firstDoseMap = null;
+                            if (!(firstDoseObj instanceof Map) || ((Map<?, ?>) firstDoseObj).get("timestamp") == null) {
+                                // pick earliest time or default to 00:00
+                                String firstTime = "00:00";
+                                if (times != null && !times.isEmpty()) {
+                                    try {
+                                        firstTime = times.stream()
+                                                .map(String::trim)
+                                                .filter(t -> {
+                                                    try { LocalTime.parse(t); return true; } catch (Exception ex) { return false; }
+                                                })
+                                                .min(Comparator.comparing(LocalTime::parse))
+                                                .orElse("00:00");
+                                    } catch (Exception ex) {
+                                        firstTime = "00:00";
+                                    }
+                                }
+                                try {
+                                    LocalTime ft = LocalTime.parse(firstTime);
+                                    LocalDateTime fdt = LocalDateTime.of(start, ft);
+                                    Instant firstInstant = fdt.atZone(zid).toInstant();
+                                    Timestamp firstTs = Timestamp.ofTimeSecondsAndNanos(firstInstant.getEpochSecond(), firstInstant.getNano());
+                                    firstDoseMap = Map.of(
+                                            "date", start.toString(),
+                                            "time", firstTime,
+                                            "timestamp", firstTs
+                                    );
+                                    needFirstDoseSave = true;
+                                } catch (Exception ex) {
+                                    ex.printStackTrace();
+                                }
+                            }
+                            if (needFirstDoseSave && firstDoseMap != null) {
+                                try {
+                                    medRef.update("firstDose", firstDoseMap).get();
+                                } catch (Exception ex) {
+                                    // ignore best-effort write failure
+                                    ex.printStackTrace();
+                                }
+                            }
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
+
+                        // decide completed vs ongoing
+                        boolean isCompleted;
+                        if (cutoffInstant != null) {
+                            isCompleted = !nowInstant.isBefore(cutoffInstant); // now >= cutoffInstant
+                        } else {
+                            // fallback: end date reached
+                            isCompleted = !today.isBefore(end);
+                        }
+
+                        // count dosesTaken within active period from history action == "taken"
+                        int dosesTaken = 0;
+                        try {
+                            List<QueryDocumentSnapshot> history = medRef.collection("history")
+                                    .whereEqualTo("action", "taken")
+                                    .get().get().getDocuments();
+
+                            for (QueryDocumentSnapshot h : history) {
+                                String dateStr = h.getString("date");
+                                if (dateStr == null) continue;
+                                LocalDate d;
+                                try {
+                                    d = LocalDate.parse(dateStr);
+                                } catch (Exception ex) {
+                                    continue;
+                                }
+                                if ((d.isEqual(start) || d.isAfter(start)) && (d.isEqual(end) || d.isBefore(end))) dosesTaken++;
+                            }
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
+
+                        // compute cutoffDate to attach to record (if cutoffInstant present use that day's date)
+                        LocalDate cutoffDate = null;
+                        if (cutoffInstant != null) cutoffDate = cutoffInstant.atZone(zid).toLocalDate();
+                        else cutoffDate = end;
+
+                        Map<String, Object> firstDoseMapRead = med.get("firstDose") instanceof Map ? (Map<String, Object>) med.get("firstDose") : null;
+                        Map<String, Object> lastDoseMapRead = med.get("lastDose") instanceof Map ? (Map<String, Object>) med.get("lastDose") : null;
+                        Integer maxSnooze = med.contains("maxSnoozeMinutes") && med.get("maxSnoozeMinutes") instanceof Number ?
+                                ((Number) med.get("maxSnoozeMinutes")).intValue() : null;
+
+                        MedicineRecord record = new MedicineRecord(
+                                medId,
+                                name,
+                                type,
+                                amount,
+                                dosesTaken,
+                                dateRange,
+                                start,
+                                end,
+                                maxSnooze,
+                                firstDoseMapRead,
+                                lastDoseMapRead,
+                                cutoffDate
+                        );
+
+                        if (isCompleted) completedList.add(record);
+                        else ongoingList.add(record);
+
+                    } catch (Exception inner) {
+                        inner.printStackTrace();
                     }
                 }
 
                 Platform.runLater(() -> {
+                    completedMedicinesTable.setItems(FXCollections.observableArrayList(completedList));
+                    ongoingMedicinesTable.setItems(FXCollections.observableArrayList(ongoingList));
                     completedMedicinesTable.refresh();
                     ongoingMedicinesTable.refresh();
                 });
@@ -428,27 +429,11 @@ public class MedicineHistoryController {
         if (obj instanceof Timestamp) {
             return ((Timestamp) obj).toDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
         } else if (obj instanceof String) {
-            try {
-                return LocalDate.parse((String) obj);
-            } catch (Exception ex) {
-                return null;
-            }
+            try { return LocalDate.parse((String) obj); } catch (Exception ex) { return null; }
         }
         return null;
     }
 
-    public void refreshAfterEnd() {
-        loadMedicineHistory();
-    }
-
-    /**
-     * Try to extract an Instant from:
-     *  - null => null
-     *  - Firestore Timestamp
-     *  - java.util.Date
-     *  - Map containing a "timestamp" entry (which may also be Timestamp or Date)
-     *  - Map with "date"/"time" but no timestamp -> tries to parse into Instant
-     */
     private Instant extractInstantFromObject(Object obj) {
         try {
             if (obj == null) return null;
@@ -469,45 +454,31 @@ public class MedicineHistoryController {
                 }
                 return null;
             }
-            if (obj instanceof Timestamp) {
-                return ((Timestamp) obj).toDate().toInstant();
-            }
-            if (obj instanceof java.util.Date) {
-                return ((java.util.Date) obj).toInstant();
-            }
-            return null;
+            if (obj instanceof Timestamp) return ((Timestamp) obj).toDate().toInstant();
+            if (obj instanceof java.util.Date) return ((java.util.Date) obj).toInstant();
         } catch (Exception ex) {
             ex.printStackTrace();
-            return null;
         }
+        return null;
     }
 
-    /**
-     * Back to dashboard
-     */
     private void handleBack() {
         try {
-        	FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
-            Parent root = loader.load();
-            
-            
-            CaretakerDashboardController controller = loader.getController();
-            controller.initializeCaretaker(caretakerName); 
-            FadeTransition ft = new FadeTransition(Duration.millis(400), root);
-            ft.setFromValue(0);
-            ft.setToValue(1);
-            ft.play();
+            Parent root = FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
             javafx.stage.Stage stage = (javafx.stage.Stage) backButton.getScene().getWindow();
-            stage.setScene(new javafx.scene.Scene(root));
+            stage.setScene(new Scene(root));
             stage.centerOnScreen();
         } catch (IOException e) {
             e.printStackTrace();
-            // minimal feedback if back fails
             Platform.runLater(() -> {
                 Alert a = new Alert(Alert.AlertType.ERROR, "Failed to load dashboard.");
                 a.showAndWait();
             });
         }
+    }
+
+    public void refreshAfterEnd() {
+        loadMedicineHistory();
     }
 
     public static class MedicineRecord {
@@ -520,12 +491,10 @@ public class MedicineHistoryController {
         private final LocalDate startDate;
         private final LocalDate endDate;
 
-        // additional fields (not shown in table by default) for future use
         private final Integer maxSnoozeMinutes;
         private final Map<String, Object> firstDose;
         private final Map<String, Object> lastDose;
 
-        // NEW: cutoffDate (the inclusive date when medicine was ended/force-ended)
         private final LocalDate cutoffDate;
 
         public MedicineRecord(String medicineId,
@@ -558,11 +527,9 @@ public class MedicineHistoryController {
         public String getDateRange() { return dateRange; }
         public LocalDate getStartDate() { return startDate; }
         public LocalDate getEndDate() { return endDate; }
-
         public Integer getMaxSnoozeMinutes() { return maxSnoozeMinutes; }
         public Map<String, Object> getFirstDose() { return firstDose; }
         public Map<String, Object> getLastDose() { return lastDose; }
-
         public LocalDate getCutoffDate() { return cutoffDate; }
     }
 }

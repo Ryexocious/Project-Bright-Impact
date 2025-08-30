@@ -1,9 +1,8 @@
 package controller;
 
+import com.google.api.gax.rpc.NotFoundException;
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.*;
-
-import javafx.animation.FadeTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -12,6 +11,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import utils.FirestoreService;
+import utils.SessionManager;
 
 import java.io.IOException;
 import java.time.*;
@@ -20,13 +20,10 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import controller.LoginController;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
-import javafx.stage.Stage;
-import javafx.util.Duration;
 
+/**
+ * EditCurrentDosesController — updated to use SessionManager and defensive Firestore handling.
+ */
 public class EditCurrentDosesController {
 
     @FXML private TableView<MedicineRecord> medicinesTable;
@@ -53,16 +50,18 @@ public class EditCurrentDosesController {
     private final ObservableList<MedicineRecord> medicineList = FXCollections.observableArrayList();
     private final ObservableList<String> timesList = FXCollections.observableArrayList();
     private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    private String caretakerName;
 
+    // Resolved elder id (the caretaker is linked to an elder)
     private String resolvedElderId = null;
+    // current caretaker id (from SessionManager or fallback)
     private String currentCaretakerId = null;
+
     private MedicineRecord currentEditing = null;
     private List<String> originalTimes = new ArrayList<>();
 
     private final boolean DEBUG_DUMP_TODAY_ITEMS_ON_UPDATE = false;
 
-    // dedicated executor (replaces raw new Thread())
+    // dedicated executor
     private final ExecutorService bgExecutor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r);
         t.setDaemon(true);
@@ -169,9 +168,39 @@ public class EditCurrentDosesController {
         });
     }
 
+    /**
+     * Prefer SessionManager for current user; fallback to legacy query if session missing.
+     */
     private void detectLoggedInCaretaker() {
         bgExecutor.submit(() -> {
             try {
+                // Primary: session manager
+                if (SessionManager.isLoggedIn() && "Caretaker".equalsIgnoreCase(SessionManager.getCurrentUserRole())) {
+                    currentCaretakerId = SessionManager.getCurrentUserId();
+                    // fetch caretaker doc to find linked elder
+                    try {
+                        DocumentSnapshot caret = FirestoreService.getFirestore().collection("users").document(currentCaretakerId).get().get();
+                        if (caret.exists() && caret.contains("elderId")) {
+                            resolvedElderId = caret.getString("elderId");
+                            loadMedicines();
+                        } else {
+                            // no linked elder
+                            Platform.runLater(() -> {
+                                medicineList.clear();
+                                editSection.setVisible(false);
+                            });
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        Platform.runLater(() -> {
+                            medicineList.clear();
+                            editSection.setVisible(false);
+                        });
+                    }
+                    return;
+                }
+
+                // Fallback: legacy query (keeps backward compatibility). Still picks first matching doc.
                 List<QueryDocumentSnapshot> docs = FirestoreService.getFirestore()
                         .collection("users")
                         .whereEqualTo("loggedIn", true)
@@ -180,18 +209,29 @@ public class EditCurrentDosesController {
 
                 if (!docs.isEmpty()) {
                     currentCaretakerId = docs.get(0).getId();
-
                     Object elderIdObj = docs.get(0).get("elderId");
                     if (elderIdObj != null) {
                         resolvedElderId = elderIdObj.toString();
                         loadMedicines();
+                    } else {
+                        Platform.runLater(() -> {
+                            medicineList.clear();
+                            editSection.setVisible(false);
+                        });
                     }
-                    Object care = docs.get(0).get("username");
-                    
-                    caretakerName=care.toString();
+                } else {
+                    // no caretaker found
+                    Platform.runLater(() -> {
+                        medicineList.clear();
+                        editSection.setVisible(false);
+                    });
                 }
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
+                Platform.runLater(() -> {
+                    medicineList.clear();
+                    editSection.setVisible(false);
+                });
             }
         });
     }
@@ -212,51 +252,55 @@ public class EditCurrentDosesController {
                 LocalDate today = LocalDate.now(zid);
 
                 for (QueryDocumentSnapshot med : meds) {
-                    String name = med.getString("name");
-                    String type = med.getString("type");
-                    String amount = med.getString("amount");
-
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> activePeriod = (Map<String, Object>) med.get("activePeriod");
-                    LocalDate start = null;
-                    LocalDate end = null;
                     try {
-                        if (activePeriod != null) {
-                            Object s = activePeriod.get("startDate");
-                            Object e = activePeriod.get("endDate");
-                            if (s instanceof String) start = LocalDate.parse((String) s);
-                            if (e instanceof String) end = LocalDate.parse((String) e);
-                        }
-                    } catch (Exception ignored) {}
+                        String name = med.getString("name");
+                        String type = med.getString("type");
+                        String amount = med.getString("amount");
 
-                    if (start == null || end == null) {
-                        Object sTop = med.get("startDate");
-                        Object eTop = med.get("endDate");
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> activePeriod = (Map<String, Object>) med.get("activePeriod");
+                        LocalDate start = null;
+                        LocalDate end = null;
                         try {
-                            if (start == null && sTop instanceof String) start = LocalDate.parse((String) sTop);
-                            if (end == null && eTop instanceof String) end = LocalDate.parse((String) eTop);
+                            if (activePeriod != null) {
+                                Object s = activePeriod.get("startDate");
+                                Object e = activePeriod.get("endDate");
+                                if (s instanceof String) start = LocalDate.parse((String) s);
+                                if (e instanceof String) end = LocalDate.parse((String) e);
+                            }
                         } catch (Exception ignored) {}
-                    }
 
-                    if (start == null || end == null) {
-                        continue;
-                    }
+                        if (start == null || end == null) {
+                            Object sTop = med.get("startDate");
+                            Object eTop = med.get("endDate");
+                            try {
+                                if (start == null && sTop instanceof String) start = LocalDate.parse((String) sTop);
+                                if (end == null && eTop instanceof String) end = LocalDate.parse((String) eTop);
+                            } catch (Exception ignored) {}
+                        }
 
-                    @SuppressWarnings("unchecked")
-                    List<String> times = (List<String>) med.get("times");
-                    if (times == null) times = new ArrayList<>();
+                        if (start == null || end == null) {
+                            continue;
+                        }
 
-                    Boolean forceEnded = med.getBoolean("forceEnded");
-                    if (Boolean.TRUE.equals(forceEnded)) continue;
+                        @SuppressWarnings("unchecked")
+                        List<String> times = (List<String>) med.get("times");
+                        if (times == null) times = new ArrayList<>();
 
-                    Instant cutoffInstant = buildCutoffInstant(med, times);
+                        Boolean forceEnded = med.getBoolean("forceEnded");
+                        if (Boolean.TRUE.equals(forceEnded)) continue;
 
-                    if (cutoffInstant != null && now.isAfter(cutoffInstant)) {
-                        continue;
-                    }
+                        Instant cutoffInstant = buildCutoffInstant(med, times);
 
-                    if (!today.isAfter(end)) {
-                        medicineList.add(new MedicineRecord(name, type, amount, start, end, new ArrayList<>(times), med.getReference()));
+                        if (cutoffInstant != null && now.isAfter(cutoffInstant)) {
+                            continue;
+                        }
+
+                        if (!today.isAfter(end)) {
+                            medicineList.add(new MedicineRecord(name, type, amount, start, end, new ArrayList<>(times), med.getReference()));
+                        }
+                    } catch (Exception inner) {
+                        inner.printStackTrace();
                     }
                 }
 
@@ -276,7 +320,20 @@ public class EditCurrentDosesController {
         bgExecutor.submit(() -> {
             try {
                 DocumentReference ref = med.getDocRef();
-                DocumentSnapshot snap = ref.get().get();
+                DocumentSnapshot snap;
+                try {
+                    snap = ref.get().get();
+                } catch (Exception e) {
+                    // treat missing doc as already removed
+                    if (isNotFound(e)) {
+                        Platform.runLater(() -> {
+                            showInfo("Already removed", "This medicine was already removed.");
+                            loadMedicines();
+                        });
+                        return;
+                    }
+                    throw e;
+                }
 
                 Instant nowInst = Instant.now();
 
@@ -297,7 +354,13 @@ public class EditCurrentDosesController {
                     boolean confirmed = showConfirmationSync("Confirm deletion", "This medicine has not reached its first dose yet. Delete it permanently?");
                     if (!confirmed) return;
 
-                    ref.delete().get();
+                    try {
+                        ref.delete().get();
+                    } catch (Exception e) {
+                        if (isNotFound(e)) {
+                            // already gone
+                        } else throw e;
+                    }
 
                     if (resolvedElderId != null) {
                         purgeMedicineFromAllSchedules(resolvedElderId, ref.getId());
@@ -350,7 +413,17 @@ public class EditCurrentDosesController {
                 if (currentCaretakerId != null) updates.put("forceEndedBy", currentCaretakerId);
                 updates.put("lastModifiedAt", Timestamp.now());
 
-                ref.update(updates).get();
+                try {
+                    ref.update(updates).get();
+                } catch (Exception e) {
+                    if (isNotFound(e)) {
+                        Platform.runLater(() -> {
+                            showInfo("Already removed", "Medicine document no longer exists.");
+                            loadMedicines();
+                        });
+                        return;
+                    } else throw e;
+                }
 
                 if (resolvedElderId != null) {
                     purgeMedicineFromAllSchedules(resolvedElderId, ref.getId());
@@ -412,7 +485,18 @@ public class EditCurrentDosesController {
 
         bgExecutor.submit(() -> {
             try {
-                DocumentSnapshot snap = med.getDocRef().get().get();
+                DocumentSnapshot snap;
+                try {
+                    snap = med.getDocRef().get().get();
+                } catch (Exception e) {
+                    if (isNotFound(e)) {
+                        Platform.runLater(() -> {
+                            showAlert("Medicine no longer exists.");
+                            loadMedicines();
+                        });
+                        return;
+                    } else throw e;
+                }
 
                 Instant firstDoseInstant = extractFirstDoseInstant(snap);
                 Instant now = Instant.now();
@@ -509,7 +593,19 @@ public class EditCurrentDosesController {
 
         bgExecutor.submit(() -> {
             try {
-                DocumentSnapshot snap = currentEditing.getDocRef().get().get();
+                DocumentSnapshot snap;
+                try {
+                    snap = currentEditing.getDocRef().get().get();
+                } catch (Exception e) {
+                    if (isNotFound(e)) {
+                        Platform.runLater(() -> {
+                            showAlert("Medicine no longer exists.");
+                            loadMedicines();
+                        });
+                        return;
+                    } else throw e;
+                }
+
                 Instant firstDoseInstant = extractFirstDoseInstant(snap);
                 Instant now = Instant.now();
 
@@ -541,12 +637,24 @@ public class EditCurrentDosesController {
                     updates.put("forceUpdated", true);
                     updates.put("forceUpdatedAt", Timestamp.now());
                     updates.put("forceUpdatedReason", reason);
+                    // use session caretaker id if available
+                    if (currentCaretakerId == null && SessionManager.isLoggedIn()) currentCaretakerId = SessionManager.getCurrentUserId();
                     if (currentCaretakerId != null) updates.put("forceUpdatedBy", currentCaretakerId);
                 }
 
                 updates.put("lastModifiedAt", Timestamp.now());
 
-                currentEditing.getDocRef().update(updates).get();
+                try {
+                    currentEditing.getDocRef().update(updates).get();
+                } catch (Exception e) {
+                    if (isNotFound(e)) {
+                        Platform.runLater(() -> {
+                            showAlert("Medicine no longer exists.");
+                            loadMedicines();
+                        });
+                        return;
+                    } else throw e;
+                }
 
                 if (changed && resolvedElderId != null) {
                     try {
@@ -599,6 +707,16 @@ public class EditCurrentDosesController {
                 Platform.runLater(() -> showAlert("Failed to update medicine: " + e.getMessage()));
             }
         });
+    }
+
+    private boolean isNotFound(Exception e) {
+        if (e == null) return false;
+        if (e instanceof NotFoundException) return true;
+        Throwable c = e.getCause();
+        if (c instanceof NotFoundException) return true;
+        // Some Firestore exceptions may wrap different types; check message as last resort
+        String msg = e.getMessage();
+        return msg != null && msg.toLowerCase().contains("not found");
     }
 
     private boolean waitUntilTodayItemsPurged(String elderId, String medId, long timeoutMs, long pollMs) {
@@ -883,32 +1001,14 @@ public class EditCurrentDosesController {
 
     private void handleBack() {
         try {
-          /*  javafx.scene.Parent root = javafx.fxml.FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
-            javafx.stage.Stage stage = (javafx.stage.Stage) backButton.getScene().getWindow();
-            stage.setScene(new javafx.scene.Scene(root));
-            stage.centerOnScreen();*/
-        	
-        	FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
-            Parent root = loader.load();
-            
-            // Get the controller and initialize it with the caretaker username
-            CaretakerDashboardController controller = loader.getController();
-            controller.initializeCaretaker(caretakerName); // Pass the username here
-            FadeTransition ft = new FadeTransition(Duration.millis(400), root);
-            ft.setFromValue(0);
-            ft.setToValue(1);
-            ft.play();
+            javafx.scene.Parent root = javafx.fxml.FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
             javafx.stage.Stage stage = (javafx.stage.Stage) backButton.getScene().getWindow();
             stage.setScene(new javafx.scene.Scene(root));
             stage.centerOnScreen();
-            
-         //   Stage stage = (Stage) backButton.getScene().getWindow();
-           // Scene scene = new Scene(root);
         } catch (IOException e) {
             e.printStackTrace();
             showAlert("Failed to load dashboard.");
         }
-
     }
 
     public static class MedicineRecord {
@@ -974,7 +1074,11 @@ public class EditCurrentDosesController {
                         for (QueryDocumentSnapshot it : items) {
                             batch.delete(it.getReference());
                         }
-                        batch.commit().get();
+                        try {
+                            batch.commit().get();
+                        } catch (Exception e) {
+                            if (!isNotFound(e)) throw e;
+                        }
                     }
                 } catch (Exception inner) {
                     inner.printStackTrace();
@@ -1001,7 +1105,11 @@ public class EditCurrentDosesController {
             for (QueryDocumentSnapshot it : items) {
                 batch.delete(it.getReference());
             }
-            batch.commit().get();
+            try {
+                batch.commit().get();
+            } catch (Exception e) {
+                if (!isNotFound(e)) throw e;
+            }
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -1040,7 +1148,9 @@ public class EditCurrentDosesController {
             Firestore db = FirestoreService.getFirestore();
             String dateId = today.format(fmt);
             DocumentReference dayRef = db.collection("users").document(elderId)
-                    .collection("schedules").document(dateId);
+                    .collection("medicines").document(medId) /* not used here */; // keep original semantics below
+            // create/merge day doc in schedules collection
+            dayRef = db.collection("users").document(elderId).collection("schedules").document(dateId);
 
             Map<String, Object> meta = new HashMap<>();
             meta.put("createdAt", Timestamp.now());
@@ -1053,7 +1163,11 @@ public class EditCurrentDosesController {
             if (!existing.isEmpty()) {
                 WriteBatch delBatch = db.batch();
                 for (QueryDocumentSnapshot it : existing) delBatch.delete(it.getReference());
-                delBatch.commit().get();
+                try {
+                    delBatch.commit().get();
+                } catch (Exception e) {
+                    if (!isNotFound(e)) throw e;
+                }
             }
 
             ZoneId zid = ZoneId.systemDefault();
@@ -1087,7 +1201,13 @@ public class EditCurrentDosesController {
                             upd.put("status", initialStatus);
                             upd.put("time", t);
                             upd.put("updatedAt", Timestamp.now());
-                            found.getReference().set(upd, SetOptions.merge()).get();
+                            try {
+                                found.getReference().set(upd, SetOptions.merge()).get();
+                            } catch (Exception e) {
+                                if (isNotFound(e)) {
+                                    // vanished concurrently, continue to recreate below
+                                } else throw e;
+                            }
                         }
                         continue;
                     }
@@ -1103,7 +1223,14 @@ public class EditCurrentDosesController {
                     item.put("status", initialStatus);
                     item.put("createdAt", Timestamp.now());
 
-                    itemsCol.document().set(item).get();
+                    try {
+                        itemsCol.document().set(item).get();
+                    } catch (Exception e) {
+                        if (isNotFound(e)) {
+                            // day doc or path disappeared concurrently; skip this item
+                            continue;
+                        } else throw e;
+                    }
 
                     if ("missed".equals(initialStatus)) {
                         logMissedDoseForMedicine(elderId, medId, name, type, amount, baseTs);
