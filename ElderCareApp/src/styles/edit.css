@@ -1,179 +1,164 @@
-/* Global font */
-.root, .vbox, .hbox {
-    -fx-font-family: "Segoe UI", "Roboto", Arial, sans-serif;
-    -fx-background-color: linear-gradient(to bottom, #f8fafc 0%, #e2e8f0 100%);
+/* medicine.css
+   Modern, clean styling for the medicines FXML
+   Place this file in the same folder as your FXML and reference with stylesheets="@medicine.css"
+*/
+
+/* Root */
+.root-pane {
+    -fx-font-family: "Segoe UI", "System";
+    -fx-background-color: linear-gradient(to bottom, #f7fbff, #ffffff);
+    -fx-padding: 16;
 }
 
-/* Titles */
-.header-title {
-    -fx-font-size: 24px;
-    -fx-font-weight: 700;
-    -fx-text-fill: #263238;
-    -fx-padding: 6 0 4 0;
-  
+/* Header */
+.header-label {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2b3a4a;
+    -fx-padding: 4 0 6 0;
 }
 
-.subheader-title {
+/* Subheader inside card */
+.subheader-label {
     -fx-font-size: 16px;
     -fx-font-weight: 600;
-    -fx-text-fill: #1f2937;
+    -fx-text-fill: #22303b;
 }
 
-/* Card styling */
-.card {
-    -fx-background-color: linear-gradient(to bottom right, #ffffff, #fbfdff);
-    -fx-background-radius: 10;
-    -fx-padding: 14;
-    -fx-effect: dropshadow(gaussian, rgba(33,33,33,0.08), 8, 0.0, 0, 2);
-    -fx-border-radius: 10;
-    -fx-border-color: rgba(34,34,34,0.06);
-}
-
+/* Edit section card */
 .edit-section {
-    -fx-padding: 12;
+    -fx-background-color: white;
+    -fx-background-radius: 10;
+    -fx-border-color: #e6ebf0;
+    -fx-border-radius: 10;
+    -fx-padding: 14;
+    -fx-effect: dropshadow(gaussian, rgba(34,40,49,0.06), 8, 0.0, 0, 2);
 }
 
-/* Table styling */
-.med-table {
-    -fx-background-color: transparent;
-    -fx-border-color: transparent;
-    -fx-table-cell-border-color: transparent;
-    -fx-padding: 6 0 6 0;
-}
-
-/* Column header styling */
-.table-view .column-header-background {
-    -fx-background-color: linear-gradient(#ffffff, #fbfdff);
-}
-.table-view .table-column-header {
-    -fx-background-color: transparent;
-    -fx-alignment: CENTER-LEFT;
-}
-.table-view .table-column-header .label {
-    -fx-font-weight: 600;
-    -fx-text-fill: #374151;
-}
-
-/* Row styling */
-.table-row-cell:filled:selected, .table-row-cell:focused:selected {
-    -fx-background-color: linear-gradient(to right, #e3f2fd, #bbdefb);
-}
-.table-row-cell:filled:hover {
-    -fx-background-color: #f5f7fb;
-}
-.table-row-cell:odd {
-    -fx-background-color: transparent;
-}
-.table-row-cell:even {
-    -fx-background-color: rgba(236,238,241,0.6);
-}
-
-/* Buttons */
-.button.btn {
+/* Generic buttons */
+.button {
     -fx-cursor: hand;
     -fx-font-weight: 600;
-    -fx-padding: 8 12;
     -fx-background-radius: 8;
-    -fx-border-radius: 8;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0.0, 0, 1);
+    -fx-padding: 8 12;
+    -fx-border-width: 0;
+    -fx-effect: dropshadow(gaussian, rgba(34,40,49,0.04), 4, 0.0, 0, 1);
 }
-.button.btn.primary {
+
+/* Primary / blue */
+.btn.primary {
     -fx-background-color: linear-gradient(#1976d2, #1565c0);
     -fx-text-fill: white;
 }
-.button.btn.success {
-    -fx-background-color: linear-gradient(#2ecc71, #28b463);
+
+/* Success / green */
+.btn.success {
+    -fx-background-color: linear-gradient(#2ecc71, #27ae60);
     -fx-text-fill: white;
 }
-.button.btn.neutral {
-    -fx-background-color: #eceff1;
-    -fx-text-fill: #263238;
+
+/* Ghost / outline */
+.btn.ghost {
+    -fx-background-color: transparent;
+    -fx-border-color: #d8dde6;
+    -fx-border-width: 1;
+    -fx-text-fill: #34495e;
 }
 
-/* Inputs */
-.text-field, .combo-box, .date-picker {
-    -fx-background-radius: 8;
-    -fx-border-radius: 8;
-    -fx-padding: 6 8;
-    -fx-border-color: rgba(39, 54, 66, 0.08);
-    -fx-focus-color: #90caf9;
-}
-
+/* Small unit label next to amount */
 .unit-label {
-    -fx-padding: 5 10;
+    -fx-font-size: 12px;
+    -fx-text-fill: #4b5966;
+    -fx-padding: 4 8;
     -fx-border-radius: 6;
-    -fx-background-radius: 6;
-    -fx-border-color: rgba(39, 54, 66, 0.06);
-    -fx-opacity: 0.95;
-}
-
-.times-list {
-    -fx-background-radius: 8;
-    -fx-border-radius: 8;
-    -fx-border-color: rgba(39, 54, 66, 0.06);
 }
 
 /* Progress label */
 .progress-label {
-    -fx-font-size: 13px;
-    -fx-text-fill: #374151;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #333;
+    -fx-padding: 6 0 0 0;
 }
 
-/* Ensure the table rows expand properly */
-.med-table .table-row-cell {
-    -fx-cell-size: 35px;
+/* Table */
+.med-table {
+    -fx-background-color: transparent;
+    -fx-padding: 6;
+    -fx-background-radius: 8;
 }
 
-/* Make the table header look better */
-.med-table .column-header {
-    -fx-size: 40px;
-    -fx-background-color: #f0f0f0;
-    -fx-border-color: #ddd;
-    -fx-border-width: 0 0 1px 0;
+/* Table header background */
+.table-view .column-header-background {
+    -fx-background-color: linear-gradient(#f6f8fb, #eef4fb);
 }
 
-/* Style for action buttons in the table */
-.col-action .button {
-    -fx-padding: 4px 8px;
+/* Column header text */
+.table-view .column-header, .table-view .column-header .label {
+    -fx-font-weight: 600;
+    -fx-text-fill: #2f3e4d;
+    -fx-alignment: CENTER_LEFT;
+}
+
+/* Row striping */
+.table-row-cell:odd {
+    -fx-background-color: white;
+}
+.table-row-cell:even {
+    -fx-background-color: #fbfdff;
+}
+
+/* Row hover and selection */
+.table-row-cell:hover {
+    -fx-background-color: #eef6ff;
+}
+.table-row-cell:selected {
+    -fx-background-color: #1976d2;
+    -fx-text-fill: white;
+}
+
+/* Cells padding */
+.table-cell {
+    -fx-padding: 8 10;
+}
+
+/* Action column - buttons inside cells: make them compact */
+.table-cell .button {
     -fx-font-size: 12px;
-    -fx-background-radius: 4px;
-}
-
-/* Hide vertical scrollbar unless hovered/pressed (keeps UI clean) */
-.table-view .virtual-flow .scroll-bar:vertical {
-    -fx-opacity: 0;
-}
-.table-view .virtual-flow .scroll-bar:vertical:pressed,
-.table-view .virtual-flow .scroll-bar:vertical:hover {
-    -fx-opacity: 1;
-}
-
-/* Optional: hide horizontal scrollbar unless hovered (helps when content fits) */
-/* Vertical scrollbar: hidden by default, shown on hover/press */
-.table-view .virtual-flow .scroll-bar:vertical {
-    -fx-opacity: 0;
-}
-.table-view .virtual-flow .scroll-bar:vertical:pressed,
-.table-view .virtual-flow .scroll-bar:vertical:hover {
-    -fx-opacity: 1;
-}
-
-/* Horizontal scrollbar: keep visible when present */
-.table-view .virtual-flow .scroll-bar:horizontal {
-    -fx-opacity: 1;
-}
-
-/* Make horizontal thumb visible and easier to spot (optional but recommended) */
-.table-view .virtual-flow .scroll-bar:horizontal .thumb {
+    -fx-padding: 6 8;
     -fx-background-radius: 6;
-    -fx-background-insets: 0;
-    -fx-background-color: rgba(0,0,0,0.25); /* subtle, can tweak or remove */
-    -fx-pref-height: 8;
 }
 
-/* If the horizontal scrollbar is disabled (no scrolling), fade it slightly */
-.table-view .virtual-flow .scroll-bar:horizontal:disabled {
-    -fx-opacity: 0.45;
+/* DatePicker/TextField/ComboBox styling (consistent controls) */
+.date-picker, .text-field, .combo-box {
+    -fx-background-radius: 6;
+    -fx-border-color: #e3e8ef;
+    -fx-border-radius: 6;
+    -fx-padding: 6 8 6 8;
+}
+
+/* ListView */
+.times-list {
+    -fx-background-color: white;
+    -fx-border-color: #e6ebf0;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+}
+
+/* Make smaller controls slightly denser */
+.grid-pane .label {
+    -fx-font-size: 13px;
+    -fx-text-fill: #34495e;
+}
+
+/* Make sure disabled-looking elements are subtle */
+.label:disabled, .text-field:disabled {
+    -fx-opacity: 0.75;
+}
+
+/* Customize the back button (by fx:id) if you want */
+#backButton {
+    -fx-min-width: 150px;
 }
 .ongoing-card {
     -fx-background-color: linear-gradient(to right, #4A6CF7, #5A8BFF); /* blue gradient */
@@ -189,32 +174,33 @@
     -fx-text-fill: white;
     -fx-padding: 4 0 8 0;
 }
-.footer-bar {
-    -fx-padding: 16 20;
+/* keep scrollpane background neutral so the card's background shows */
+.edit-scroll {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+.edit-scroll .viewport {
     -fx-background-color: transparent;
 }
 
-/* Back to Dashboard button (light-gray classic style) */
-.back-btn {
-    -fx-background-color: linear-gradient(#f9f9f9, #e6e6e6);
-    -fx-text-fill: #000000;
-    -fx-font-size: 13px;
-    -fx-font-weight: normal;
-    -fx-padding: 8 16;
+/* vertical scrollbar styling so it looks like your table's scrollbar */
+.scroll-bar:vertical {
+    -fx-padding: 0 4 0 0;
+    -fx-background-color: transparent;
+}
+.scroll-bar:vertical .thumb {
+    -fx-background-color: rgba(0,0,0,0.18);
+    -fx-background-insets: 2;
     -fx-background-radius: 6;
-    -fx-border-radius: 6;
-    -fx-border-color: #c0c0c0;
-    -fx-border-width: 1;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 4, 0.0, 0, 1);
-}
-/* Hover effect */
-.button.btn.back-btn:hover {
-    -fx-background-color: linear-gradient(#ffffff, #dcdcdc);
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 2, 0.0, 0, 1);
 }
 
-/* Pressed effect */
-.button.btn.back-btn:pressed {
-    -fx-background-color: linear-gradient(#dcdcdc, #c0c0c0);
-    -fx-effect: none;
+/* keep horizontal bar hidden */
+.scroll-bar:horizontal {
+    -fx-opacity: 0;
+    -fx-max-height: 0;
 }
 
+
+/* Small responsive tweak: if the scene becomes narrow, reduce spacing slightly */
+/* Note: JavaFX CSS doesn't have media queries, but you can tune layout in code if needed. */

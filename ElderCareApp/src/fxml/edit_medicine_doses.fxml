@@ -6,65 +6,85 @@
 <VBox xmlns="http://javafx.com/javafx/23.0.1" 
       xmlns:fx="http://javafx.com/fxml/1" 
       fx:controller="controller.EditCurrentDosesController" 
-      spacing="12">
+      spacing="12"
+      stylesheets="@../styles/edit.css"
+      styleClass="root-pane">
 
     <padding>
         <Insets top="12" right="12" bottom="12" left="12"/>
     </padding>
 
-    <Label text="Ongoing Medicines" style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
+    <VBox spacing="8" styleClass="ongoing-card">
+        <Label text="Ongoing Medicines" styleClass="ongoing-title"/>
+    </VBox>
 
-    <TableView fx:id="medicinesTable" prefHeight="300">
+    <!-- Allow TableView to grow and fill available vertical space -->
+    <TableView fx:id="medicinesTable" prefHeight="300" styleClass="med-table" VBox.vgrow="ALWAYS" minHeight="200">
         <columns>
             <TableColumn fx:id="medNameCol" text="Name" prefWidth="150"/>
-            <TableColumn fx:id="medTypeCol" text="Type" prefWidth="100"/>
-            <TableColumn fx:id="medAmountCol" text="Amount" prefWidth="100"/>
+            <TableColumn fx:id="medTypeCol" text="Type" prefWidth="80"/>
+            <TableColumn fx:id="medAmountCol" text="Amount" prefWidth="80"/>
             <TableColumn fx:id="medStartDateCol" text="Start Date" prefWidth="100"/>
             <TableColumn fx:id="medEndDateCol" text="End Date" prefWidth="100"/>
-            <TableColumn fx:id="medTimesCol" text="Times" prefWidth="150"/>
-            <TableColumn fx:id="actionCol" text="Actions" prefWidth="200"/>
+            <TableColumn fx:id="medTimesCol" text="Times" prefWidth="100"/>
+            <TableColumn fx:id="actionCol" text="Actions" prefWidth="130"/>
         </columns>
     </TableView>
 
-    <!-- Edit section hidden by default -->
-    <VBox fx:id="editSection" spacing="12" style="-fx-border-color: #ccc; -fx-border-width: 1; -fx-border-radius: 4; -fx-padding:12;" visible="false">
-        <Label text="Update Medicine" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
-        
-        <GridPane hgap="12" vgap="12">
-            <Label text="Start Date:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
-            <DatePicker fx:id="editStartDate" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
-            <Label text="End Date:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
-            <DatePicker fx:id="editEndDate" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+    <!-- Edit section — limit max height so it doesn't shrink the table -->
 
-            <Label text="Amount:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
-            <!-- HBox: editable numeric TextField + non-editable unit Label -->
-            <HBox spacing="8" GridPane.rowIndex="2" GridPane.columnIndex="1" alignment="CENTER_LEFT">
-                <TextField fx:id="editAmountField" prefWidth="120"/>
-                <!-- Unit label is filled automatically based on type; caretakers cannot edit it -->
-                <Label fx:id="editAmountUnitLabel" text="" style="-fx-background-color:transparent; -fx-padding:3 6; -fx-border-color:transparent;"/>
-            </HBox>
-        </GridPane>
+<ScrollPane fx:id="editScroll"
+            fitToWidth="true"
+            pannable="false"
+            hbarPolicy="NEVER"
+            vbarPolicy="AS_NEEDED"
+            styleClass="edit-scroll"
+            VBox.vgrow="NEVER">
+    <content>
+        <VBox fx:id="editSection"
+              spacing="12"
+              styleClass="edit-section"
+              visible="false"
+              managed="false"    
+              maxHeight="260"
+              fillWidth="true">
 
-        <!-- Time management UI -->
-        <VBox spacing="8" alignment="CENTER_LEFT" style="-fx-pref-width:468;">
-            <HBox spacing="8" alignment="CENTER_LEFT">
-                <Label text="Time (1-hour steps):"/>
-                <ComboBox fx:id="timePickerCombo" prefWidth="120"/>
-                <Button fx:id="addTimeButton" text="Add" style="-fx-background-color:#1976d2; -fx-text-fill:white; -fx-padding:6 10;" />
-                <Button fx:id="removeTimeButton" text="Remove" style="-fx-background-color:#e0e0e0; -fx-padding:6 10;" />
-                <Button fx:id="clearTimesButton" text="Clear" style="-fx-background-color:#e0e0e0; -fx-padding:6 10;" />
-                <Region HBox.hgrow="ALWAYS"/>
-            </HBox>
-            <ListView fx:id="timesListView" prefWidth="468" prefHeight="110" />
-        </VBox>
+                <Label text="Update Medicine" styleClass="subheader-label"/>
 
-        <Button fx:id="updateMedicineBtn" text="Update Medicine" style="-fx-background-color: #2ecc71; -fx-text-fill: white;"/>
-        <Label fx:id="progressLabel" text="Progress: " style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
-    </VBox>
+                <GridPane hgap="12" vgap="12">
+                    <Label text="Start Date:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                    <DatePicker fx:id="editStartDate" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+                    <Label text="End Date:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                    <DatePicker fx:id="editEndDate" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
 
+                    <Label text="Amount:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                    <HBox spacing="8" GridPane.rowIndex="2" GridPane.columnIndex="1" alignment="CENTER_LEFT">
+                        <TextField fx:id="editAmountField" prefWidth="120"/>
+                        <Label fx:id="editAmountUnitLabel" text="" styleClass="unit-label"/>
+                    </HBox>
+                </GridPane>
+
+                <VBox spacing="8" alignment="CENTER_LEFT" style="-fx-pref-width:468;">
+                    <HBox spacing="8" alignment="CENTER_LEFT">
+                        <Label text="Time (1-hour steps):" />
+                        <ComboBox fx:id="timePickerCombo" prefWidth="120"/>
+                        <Button fx:id="addTimeButton" text="Add" styleClass="btn primary"/>
+                        <Button fx:id="removeTimeButton" text="Remove" styleClass="btn ghost"/>
+                        <Button fx:id="clearTimesButton" text="Clear" styleClass="btn ghost"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                    </HBox>
+                    <ListView fx:id="timesListView" prefWidth="468" prefHeight="110" styleClass="times-list"/>
+                </VBox>
+
+                <Button fx:id="updateMedicineBtn" text="Update Medicine" styleClass="btn success"/>
+                <Label fx:id="progressLabel" text="Progress: " styleClass="progress-label"/>
+            </VBox>
+        </content>
+    </ScrollPane>
+   
     <!-- Spacer then back button at bottom-right -->
     <HBox spacing="8">
         <Region HBox.hgrow="ALWAYS"/>
-        <Button fx:id="backButton" text="Back to Dashboard" style="-fx-background-color:#1976d2; -fx-text-fill:white; -fx-padding:8 14;"/>
+        <Button fx:id="backButton" text="Back to Dashboard" styleClass="btn primary" />
     </HBox>
 </VBox>
