@@ -46,6 +46,7 @@ public class EditCurrentDosesController {
     @FXML private Button addTimeButton, removeTimeButton, clearTimesButton, updateMedicineBtn;
     @FXML private Label progressLabel;
     @FXML private Button backButton;
+    @FXML private ScrollPane editScroll;
 
     private final ObservableList<MedicineRecord> medicineList = FXCollections.observableArrayList();
     private final ObservableList<String> timesList = FXCollections.observableArrayList();
@@ -86,6 +87,9 @@ public class EditCurrentDosesController {
 
         updateMedicineBtn.setOnAction(e -> handleUpdateMedicine());
         editSection.setVisible(false);
+        editSection.setManaged(false);
+        editScroll.setVisible(false);
+        editScroll.setManaged(false);
 
         backButton.setOnAction(e -> handleBack());
 
@@ -445,6 +449,9 @@ public class EditCurrentDosesController {
     private void showEditSection(MedicineRecord med) {
         currentEditing = med;
         editSection.setVisible(true);
+        editSection.setManaged(true);
+        editScroll.setVisible(true);
+        editScroll.setManaged(true);
         editStartDate.setValue(med.getStartDate());
         editEndDate.setValue(med.getEndDate());
 
