@@ -103,7 +103,6 @@
 }
 
 /* Remove empty box at the end of list views */
-/* Scope the empty-cell rule only to our lists (avoid global effect) */
 .schedule-list .list-cell:empty,
 .times-list .list-cell:empty {
     -fx-background-color: transparent;
@@ -122,13 +121,6 @@
     -fx-text-fill: #1f2937;  /* fallback text color */
     -fx-opacity: 1;
 }
-
-/* Some JavaFX versions use a .text node inside the cell — force its fill too */
-/*.times-list .list-cell .text {
-    -fx-fill: #1f2937;
-    -fx-font-size: 12px;
-}*/
-
 
 /* Form container */
 .form-container {
@@ -340,4 +332,72 @@
 .danger-button:pressed {
     -fx-background-color: linear-gradient(to bottom, #dc2626 0%, #b91c1c 100%);
     -fx-translate-y: 1px;
+}
+
+/* ----------------------------
+   Dose card and action button styles
+   ---------------------------- */
+
+.dose-card {
+    -fx-padding: 10;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-border-color: #e6e9ef;
+    -fx-border-width: 1;
+    -fx-background-color: white;
+    -fx-alignment: CENTER_LEFT;
+}
+
+.dose-meta {
+    /* allows VBox inside card to stretch and contain labels */
+}
+
+.dose-title {
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+    -fx-text-fill: #111827;
+}
+
+.dose-type {
+    -fx-text-fill: #444;
+    -fx-font-size: 12px;
+}
+
+.dose-sub {
+    -fx-text-fill: #666;
+    -fx-font-size: 12px;
+}
+
+.dose-time {
+    -fx-font-size: 13px;
+    -fx-text-fill: #333;
+    -fx-min-width: 48;
+    -fx-pref-width: 64;
+    -fx-max-width: 96;
+    -fx-alignment: CENTER_RIGHT;
+}
+
+/* Action buttons inside cards */
+.btn-taken {
+    -fx-background-color: #2e7d32;
+    -fx-text-fill: white;
+    -fx-background-radius: 6;
+    -fx-padding: 6 10;
+    -fx-font-weight: 600;
+}
+
+.btn-taken:hover {
+    -fx-background-color: #2e8b3a;
+}
+
+.btn-skip {
+    -fx-background-color: #c62828;
+    -fx-text-fill: white;
+    -fx-background-radius: 6;
+    -fx-padding: 6 10;
+    -fx-font-weight: 600;
+}
+
+.btn-skip:hover {
+    -fx-background-color: #d33a3a;
 }

@@ -15,9 +15,12 @@ import javafx.scene.control.TextField;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import utils.FirestoreService;
+import utils.SessionManager;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 public class LoginController {
@@ -48,6 +51,7 @@ public class LoginController {
         Firestore db = FirestoreService.getFirestore();
         CollectionReference usersRef = db.collection("users");
 
+        // find user by username/password/role
         ApiFuture<QuerySnapshot> future = usersRef
                 .whereEqualTo("username", username)
                 .whereEqualTo("password", password)
@@ -59,21 +63,68 @@ public class LoginController {
                 List<QueryDocumentSnapshot> users = future.get().getDocuments();
                 if (users.isEmpty()) {
                     Platform.runLater(() -> messageLabel.setText("Invalid credentials or role."));
-                } else {
-                    DocumentReference userDoc = users.get(0).getReference();
-                    userDoc.update("loggedIn", true, "lastLogin", System.currentTimeMillis());
-
-                    Platform.runLater(() -> {
-                        messageLabel.setText("Login successful!");
-                        if (role.equalsIgnoreCase("Elder")) {
-                            // pass the username to the elder dashboard so it can load details
-                            switchSceneWithFade("elder_dashboard.fxml", username);
-                        } else {
-                            // caretaker doesn't need the username passed
-                            switchSceneWithFade("caretaker_dashboard.fxml",username);
-                        }
-                    });
+                    return;
                 }
+
+                // Use the first matched document as the authenticated user
+                DocumentReference userRef = users.get(0).getReference();
+                String userId = userRef.getId();
+                String roleLower = role.toLowerCase();
+
+                // Create session locally and persist small session info to Firestore.
+                String sessionId = SessionManager.createSession(userId, roleLower);
+
+                // Write lastLogin & lastSessionId fields to user doc
+                Map<String,Object> sessionFields = new HashMap<>();
+                sessionFields.put("lastLogin", System.currentTimeMillis());
+                sessionFields.put("lastSessionId", sessionId);
+                // Optionally keep loggedIn for backward compatibility (comment out if you remove loggedIn usage everywhere)
+                // sessionFields.put("loggedIn", true);
+
+                try {
+                    userRef.update(sessionFields).get();
+                } catch (Exception e) {
+                    // If update fails (rare), we still continue with local session; but log
+                    System.out.println("Warning: failed to write lastSessionId to Firestore: " + e.getMessage());
+                }
+
+                Platform.runLater(() -> {
+                    messageLabel.setText("Login successful!");
+                    Stage stage = (Stage) usernameField.getScene().getWindow();
+
+                    try {
+                        if (role.equalsIgnoreCase("Elder")) {
+                            // IMPORTANT: load via FXMLLoader so we can get the controller and call initializeElder(...)
+                            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/elder_dashboard.fxml"));
+                            Parent root = loader.load();
+
+                            // Get controller and pass username so ElderDashboardController can initialize
+                            Object controller = loader.getController();
+                            if (controller instanceof ElderDashboardController) {
+                                ElderDashboardController elderCtrl = (ElderDashboardController) controller;
+                                elderCtrl.initializeElder(username); // pass the logged-in username
+                            }
+
+                            FadeTransition ft = new FadeTransition(Duration.millis(400), root);
+                            ft.setFromValue(0);
+                            ft.setToValue(1);
+                            ft.play();
+
+                            Scene scene = new Scene(root);
+                            if (stage != null) {
+                                stage.setScene(scene);
+                                stage.centerOnScreen();
+                            }
+                        } else {
+                            // Keep caretaker behavior unchanged
+                            switchSceneWithFade("caretaker_dashboard.fxml");
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        messageLabel.setText("Failed to load dashboard.");
+                    }
+                });
+
             } catch (InterruptedException | ExecutionException e) {
                 Platform.runLater(() -> messageLabel.setText("Login failed: " + e.getMessage()));
                 e.printStackTrace();
@@ -86,42 +137,12 @@ public class LoginController {
         switchSceneWithFade("registration.fxml");
     }
 
-    // Overload used when we need to pass the logged-in username to the next controller
-    private void switchSceneWithFade(String fxmlFile, String loggedInUsername) {
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/" + fxmlFile));
-            Parent root = loader.load();
-
-            // If the loaded controller is ElderDashboardController, call initializeElder
-            Object controller = loader.getController();
-            if (controller instanceof ElderDashboardController) {
-                ((ElderDashboardController) controller).initializeElder(loggedInUsername);
-            }else if(controller instanceof CaretakerDashboardController) {
-            	((CaretakerDashboardController)controller).initializeCaretaker(loggedInUsername);
-            }
-
-            Stage stage = (Stage) usernameField.getScene().getWindow();
-            Scene scene = new Scene(root);
-
-            FadeTransition ft = new FadeTransition(Duration.millis(400), root);
-            ft.setFromValue(0);
-            ft.setToValue(1);
-            ft.play();
-
-            stage.setScene(scene);
-            stage.centerOnScreen();
-        } catch (IOException e) {
-            e.printStackTrace();
-            messageLabel.setText("Failed to load scene: " + fxmlFile);
-        }
-    }
-
-    // Existing overload for calls that don't need to pass username
     private void switchSceneWithFade(String fxmlFile) {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/" + fxmlFile));
             Parent root = loader.load();
 
+            // Controllers that need to know who is logged in should use SessionManager.getCurrentUserId()
             Stage stage = (Stage) usernameField.getScene().getWindow();
             Scene scene = new Scene(root);
 

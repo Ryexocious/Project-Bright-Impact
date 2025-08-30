@@ -14,6 +14,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import utils.FirestoreService;
+import utils.SessionManager;
 
 import java.io.IOException;
 import java.time.*;
@@ -22,24 +23,15 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 
 /**
- * TodaysScheduleController - streamlined and robust against multiple Firestore shapes.
- *
- * Inclusion logic for selectedDate:
- *  - If a per-day "dates" array exists: include only when selectedDate is present there.
- *  - Else compute "start" (from activePeriod.startDate or fallback) and "cutoff" (prefer forceEndedAt, then lastDose.timestamp,
- *    else activePeriod.endDate + latest configured time, else top-level endDate). Include when:
- *      start <= selectedDate <= cutoffDate
- *
- * Timezone handling: uses system default zone. If your Firestore timestamps are always Asia/Dhaka,
- * consider replacing ZoneId.systemDefault() with ZoneId.of("Asia/Dhaka").
+ * TodaysScheduleController - updated to use SessionManager.getCurrentUserId()
+ * and to be robust when multiple caretakers are logged-in.
  */
 public class TodaysScheduleController {
 
     @FXML private VBox scheduleContainer;
     @FXML private Label elderFoundLabel;
-    @FXML private Button backButton; // added back button (wired to FXML)
+    @FXML private Button backButton; // optional - wired in FXML if present
 
-    // new top date label (created dynamically so we keep FXML minimal)
     private Label scheduleDateLabel;
 
     // Linked elder info
@@ -62,15 +54,11 @@ public class TodaysScheduleController {
         elderFoundLabel.setText("Detecting linked elder...");
         detectLoggedInCaretaker();
 
-        // wire back button to dashboard
-        /*if (backButton != null) {
+        if (backButton != null) {
             backButton.setOnAction(e -> handleBack());
-        }*/
+        }
     }
-
-    /**
-     * Adds a big CTA button to allow viewing a custom date's schedule.
-     */
+    
     private void addCustomDayButton() {
         Button customDayButton = new Button("View a Custom Day Schedule");
         customDayButton.setStyle(
@@ -85,7 +73,7 @@ public class TodaysScheduleController {
 
         scheduleContainer.getChildren().add(wrapper);
     }
-
+    
     private void openDatePicker() {
         DatePicker datePicker = new DatePicker(selectedDate);
         datePicker.setShowWeekNumbers(false);
@@ -111,33 +99,37 @@ public class TodaysScheduleController {
         });
     }
 
-    // -----------------------
-    // Detect logged-in caretaker and linked elder
-    // -----------------------
     private void detectLoggedInCaretaker() {
-        Firestore db = FirestoreService.getFirestore();
-        CollectionReference users = db.collection("users");
-
         new Thread(() -> {
             try {
-                QuerySnapshot snap = users.whereEqualTo("loggedIn", true)
-                        .whereEqualTo("role", "caretaker")
-                        .get().get();
+                String currentUid = SessionManager.getCurrentUserId();
+                if (currentUid == null) {
+                    Platform.runLater(() -> elderFoundLabel.setText("No logged-in caretaker found. Please login."));
+                    return;
+                }
 
-                if (!snap.isEmpty()) {
-                    QueryDocumentSnapshot doc = snap.getDocuments().get(0);
-                    currentCaretakerId = doc.getId();
-                    currentCaretakerUsername = doc.getString("username");
-                    Object elderIdObj = doc.get("elderId");
-                    if (elderIdObj != null) currentCaretakerElderId = elderIdObj.toString();
+                Firestore db = FirestoreService.getFirestore();
+                DocumentSnapshot doc = db.collection("users").document(currentUid).get().get();
+                if (!doc.exists()) {
+                    Platform.runLater(() -> elderFoundLabel.setText("Logged-in caretaker not found in database."));
+                    return;
+                }
 
-                    if (currentCaretakerElderId != null) {
-                        loadMyElder(currentCaretakerElderId);
-                    } else {
-                        Platform.runLater(() -> elderFoundLabel.setText("This caretaker is not linked to an elder."));
-                    }
+                String role = doc.getString("role");
+                if (role == null || !"caretaker".equalsIgnoreCase(role)) {
+                    Platform.runLater(() -> elderFoundLabel.setText("Current user is not a caretaker."));
+                    return;
+                }
+
+                currentCaretakerId = currentUid;
+                currentCaretakerUsername = doc.getString("username");
+                Object elderIdObj = doc.get("elderId");
+                if (elderIdObj != null) currentCaretakerElderId = elderIdObj.toString();
+
+                if (currentCaretakerElderId != null) {
+                    loadMyElder(currentCaretakerElderId);
                 } else {
-                    Platform.runLater(() -> elderFoundLabel.setText("No logged-in caretaker found."));
+                    Platform.runLater(() -> elderFoundLabel.setText("This caretaker is not linked to an elder."));
                 }
             } catch (InterruptedException | ExecutionException ex) {
                 ex.printStackTrace();
@@ -170,14 +162,10 @@ public class TodaysScheduleController {
         }).start();
     }
 
-    /**
-     * Load schedule for selectedDate.
-     */
     private void loadScheduleForSelectedDate() {
         scheduleContainer.getChildren().clear();
         if (resolvedElderId == null) return;
 
-        // Top date label
         scheduleDateLabel = new Label("Viewing schedule for " + selectedDate.format(displayDateFmt));
         scheduleDateLabel.setStyle("-fx-font-size:14; -fx-font-weight:600; -fx-text-fill:#222;");
         VBox.setMargin(scheduleDateLabel, new Insets(0, 0, 10, 0));
@@ -211,16 +199,13 @@ public class TodaysScheduleController {
 
                     boolean include = false;
 
-                    // 1) If per-day dates array exists, it takes precedence
                     if (dates != null && !dates.isEmpty()) {
                         include = dates.contains(selectedDate.format(isoDateFmt));
                     } else {
-                        // 2) Otherwise rely on activePeriod/start and cutoff-end
                         LocalDate start = parseDateFromActivePeriod(activePeriodObj, "startDate");
-                        LocalDate fallbackStart = parseDate(d.get("startDate")); // fallback top-level
+                        LocalDate fallbackStart = parseDate(d.get("startDate"));
                         if (start == null) start = fallbackStart;
 
-                        // If still null, try firstDose.date
                         if (start == null) {
                             Object firstDoseObj = d.get("firstDose");
                             if (firstDoseObj instanceof Map) {
@@ -229,12 +214,8 @@ public class TodaysScheduleController {
                             }
                         }
 
-                        if (start == null) {
-                            // Defensive: if there's no start we treat as started (legacy records)
-                            start = LocalDate.MIN;
-                        }
+                        if (start == null) start = LocalDate.MIN;
 
-                        // compute cutoff instant/date
                         Instant cutoffInstant = buildCutoffInstant(d, times);
                         LocalDate cutoffDate;
                         if (cutoffInstant != null) {
@@ -245,13 +226,11 @@ public class TodaysScheduleController {
                             cutoffDate = (activeEnd != null) ? activeEnd : LocalDate.MAX;
                         }
 
-                        // include only when start <= selectedDate <= cutoffDate
                         include = !(selectedDate.isBefore(start) || selectedDate.isAfter(cutoffDate));
                     }
 
                     if (!include) continue;
 
-                    // For included medicines, create dose cards for each time
                     for (String t : times) {
                         if (t == null) continue;
                         String timeStr = t.trim();
@@ -261,7 +240,6 @@ public class TodaysScheduleController {
                     }
                 }
 
-                // sort by time
                 cards.sort(Comparator.comparing(h -> {
                     Label timeLabel = (Label) h.getUserData();
                     try {
@@ -273,7 +251,6 @@ public class TodaysScheduleController {
 
                 Platform.runLater(() -> {
                     if (cards.isEmpty()) {
-                        // show "no schedule" message
                         Label emptyMsg = new Label("No medicines scheduled for this day.");
                         emptyMsg.setStyle("-fx-font-size:14; -fx-text-fill:#777;");
                         scheduleContainer.getChildren().add(emptyMsg);
@@ -443,7 +420,7 @@ public class TodaysScheduleController {
         }
     }
 
-    /*private void handleBack() {
+    private void handleBack() {
         try {
             Parent root = javafx.fxml.FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
             javafx.stage.Stage stage = (javafx.stage.Stage) scheduleContainer.getScene().getWindow();
@@ -456,5 +433,5 @@ public class TodaysScheduleController {
                 a.showAndWait();
             });
         }
-    }*/
+    }
 }

@@ -15,11 +15,7 @@
         <HBox alignment="CENTER_LEFT" spacing="8" styleClass="top-bar">
             <Label text="ElderCare — Medicine Scheduler" styleClass="header-title"/>
             <Region HBox.hgrow="ALWAYS"/>
-            <Button fx:id="closeButton" text="✖" styleClass="close-button">
-                <tooltip>
-                    <Tooltip text="Close"/>
-                </tooltip>
-            </Button>
+            <!-- Close button removed as requested -->
         </HBox>
     </top>
 
