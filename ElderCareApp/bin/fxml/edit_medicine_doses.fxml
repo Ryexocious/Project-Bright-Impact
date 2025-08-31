@@ -46,7 +46,6 @@
               styleClass="edit-section"
               visible="false"
               managed="false"    
-              maxHeight="260"
               fillWidth="true">
 
                 <Label text="Update Medicine" styleClass="subheader-label"/>
@@ -73,7 +72,7 @@
                         <Button fx:id="clearTimesButton" text="Clear" styleClass="btn ghost"/>
                         <Region HBox.hgrow="ALWAYS"/>
                     </HBox>
-                    <ListView fx:id="timesListView" prefWidth="468" prefHeight="110" styleClass="times-list"/>
+                    <ListView fx:id="timesListView" prefWidth="468" prefHeight="110" styleClass="times-list" VBox.vgrow="ALWAYS"/>
                 </VBox>
 
                 <Button fx:id="updateMedicineBtn" text="Update Medicine" styleClass="btn success"/>
