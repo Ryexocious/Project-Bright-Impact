@@ -121,6 +121,11 @@
     -fx-text-fill: #1f2937;  /* fallback text color */
     -fx-opacity: 1;
 }
+.times-list .list-cell:filled:selected,
+.times-list .list-cell:selected {
+    -fx-background-color: #1976d2;      /* set the fill you want */
+    -fx-text-fill: white;               /* selected row text color */
+}
 
 /* Form container */
 .form-container {

@@ -70,6 +70,12 @@ public class TodaysScheduleController {
         HBox wrapper = new HBox(customDayButton);
         wrapper.setAlignment(Pos.CENTER);
         wrapper.setPadding(new Insets(12, 0, 12, 0));
+        wrapper.setStyle(
+                "-fx-background-color: transparent; " +
+                "-fx-background-insets: 0; " +
+                "-fx-border-width: 0; " +
+                "-fx-padding: 12 0 12 0;"
+            );
 
         scheduleContainer.getChildren().add(wrapper);
     }
