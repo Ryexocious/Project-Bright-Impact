@@ -2,9 +2,7 @@ package controller;
 
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.*;
-import javafx.animation.KeyFrame;
-import javafx.animation.PauseTransition;
-import javafx.animation.Timeline;
+import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -17,7 +15,6 @@ import javafx.scene.layout.VBox;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.stage.Stage;
-import javafx.util.Duration;
 import utils.EmailService;
 import utils.FirestoreService;
 
@@ -33,16 +30,11 @@ import model.TimerController;
 import javafx.geometry.Pos;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
+import javafx.animation.Timeline;
+import javafx.animation.KeyFrame;
+import javafx.util.Duration;
 
-/**
- * ElderDashboardController (refactored for realtime updates + safer threading + cleanup)
- *
- * Key changes:
- *  - grouped missed-dose notifications (single email per scheduled time grouping)
- *  - centralized confirm button visibility handling
- *  - FIX: when confirming a snoozed group, mark all schedule items that share the same baseTimestamp as taken
- *  - Alarm playback during selected snooze sub-windows using relative "data/alarm.mp3"
- */
+
 public class ElderDashboardController {
 
     private final Object lock = new Object();
@@ -66,7 +58,8 @@ public class ElderDashboardController {
     @javafx.fxml.FXML private VBox medsListBox;
     @javafx.fxml.FXML private Button confirmIntakeButton;
 
-    private Timeline countdownTimeline;
+    // replaced Timeline countdown with AnimationTimer for smoother updates
+    private AnimationTimer countdownAnim;
 
     // timer target and window
     private LocalDateTime nextDoseDateTime;
@@ -86,14 +79,7 @@ public class ElderDashboardController {
 
     private TimerController timerView;
 
-    // Executors
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r);
-        t.setDaemon(true);
-        t.setName("elder-dashboard-rollover-check");
-        return t;
-    });
-
+    // Executor for background Firestore work — kept for network IO
     private final ExecutorService bgExecutor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r);
         t.setDaemon(true);
@@ -104,9 +90,9 @@ public class ElderDashboardController {
     private ListenerRegistration todayItemsListener = null;
     private volatile String currentTodayId = null;
 
-    /* ===========================
-       Alarm (media) support
-       =========================== */
+    // Rollover checker on FX thread (replaces scheduled executor previously used)
+    private Timeline rolloverChecker = null;
+
     private final Object alarmLock = new Object();
     private volatile MediaPlayer alarmPlayer = null;
     private volatile boolean alarmPlaying = false;
@@ -117,11 +103,7 @@ public class ElderDashboardController {
     // Check if remainingSeconds falls into any of the alarm-trigger windows
     private boolean isInAlarmWindow(long remainingSeconds) {
         if (remainingSeconds < 0) return false;
-        // ranges inclusive [lower, upper]
-        // 29:59 -> 28:00  => [1680, 1799]
-        // 19:59 -> 18:00  => [1080, 1199]
-        // 9:59  -> 8:00   => [480, 599]
-        // 1:59  -> 0:00   => [0, 119]
+
         return (remainingSeconds >= 1680 && remainingSeconds <= 1799)
                 || (remainingSeconds >= 1080 && remainingSeconds <= 1199)
                 || (remainingSeconds >= 480 && remainingSeconds <= 599)
@@ -146,8 +128,7 @@ public class ElderDashboardController {
                     mp.setCycleCount(MediaPlayer.INDEFINITE);
                     mp.setOnError(() -> System.err.println("Alarm media error: " + mp.getError()));
                     mp.setOnEndOfMedia(() -> {
-                        // setCycleCount(INDEFINITE) already loops; this ensures restart if needed
-                        try { mp.seek(Duration.ZERO); } catch (Exception ignored) {}
+                        try { mp.seek(javafx.util.Duration.ZERO); } catch (Exception ignored) {}
                     });
                     mp.play();
                     alarmPlayer = mp;
@@ -176,9 +157,28 @@ public class ElderDashboardController {
         });
     }
 
-    /* ===========================
-       Public initializer
-       =========================== */
+    // Make a deterministic and safe document id for a med/time pair.
+    // e.g. medId + "|" + time (with ":" replaced) and non-safe chars turned into '_'
+    private String makeItemDocId(String medId, String time) {
+        if (medId == null) medId = "mednull";
+        if (time == null) time = "tnull";
+        String cleanedTime = time.replace(":", "-");
+        String raw = medId + "|" + cleanedTime;
+        // allow only letters, digits, dash, underscore, pipe
+        return raw.replaceAll("[^a-zA-Z0-9_\\-\\|]", "_");
+    }
+
+    // Deduplicate times preserving order
+    private List<String> dedupeTimesPreserveOrder(List<String> times) {
+        if (times == null) return Collections.emptyList();
+        Set<String> seen = new LinkedHashSet<>();
+        for (String t : times) {
+            if (t != null) seen.add(t);
+        }
+        return new ArrayList<>(seen);
+    }
+
+
     public void initializeElder(String loggedInUsername) {
         if (helpRequestButton != null) helpRequestButton.setDisable(true);
         if (welcomeLabel != null) welcomeLabel.setText("Loading...");
@@ -247,9 +247,7 @@ public class ElderDashboardController {
         lastShownConfirmGroupBase = null;
     }
 
-    /* ===========================
-       Centralized confirm button visibility helper
-       =========================== */
+
     private void setConfirmButtonVisible(boolean visible, LocalDateTime groupBase) {
         if (!Platform.isFxApplicationThread()) {
             Platform.runLater(() -> setConfirmButtonVisible(visible, groupBase));
@@ -283,7 +281,14 @@ public class ElderDashboardController {
         tryAttachMedsListener(db);
         attachTodayItemsListenerForCurrentDay(db);
 
-        scheduler.scheduleAtFixedRate(() -> {
+        // Rollover checker on FX thread instead of a background scheduled executor.
+        // Runs frequently and deterministically on FX thread to avoid cross-thread jitter.
+        if (rolloverChecker != null) {
+            rolloverChecker.stop();
+            rolloverChecker = null;
+        }
+
+        rolloverChecker = new Timeline(new KeyFrame(Duration.seconds(1), ev -> {
             if (elderId == null) return;
             String newTodayId = LocalDate.now().format(dateIdFmt);
             if (!Objects.equals(newTodayId, currentTodayId)) {
@@ -293,7 +298,9 @@ public class ElderDashboardController {
                 attachTodayItemsListenerForCurrentDay(fdb);
                 bgExecutor.submit(this::ensureTodayScheduleAndProcess);
             }
-        }, 30, 30, TimeUnit.SECONDS);
+        }));
+        rolloverChecker.setCycleCount(Timeline.INDEFINITE);
+        rolloverChecker.play();
     }
 
     private void tryAttachMedsListener(Firestore db) {
@@ -373,11 +380,13 @@ public class ElderDashboardController {
             ScheduleItem prev = bestByMed.get(s.medicineId);
             if (prev == null) bestByMed.put(s.medicineId, s);
             else {
+                // --> CHANGED: choose earliest baseTimestamp (closest upcoming), not the later one
                 if (s.baseTimestamp != null && prev.baseTimestamp != null) {
-                    if (s.baseTimestamp.isAfter(prev.baseTimestamp)) bestByMed.put(s.medicineId, s);
+                    if (s.baseTimestamp.isBefore(prev.baseTimestamp)) bestByMed.put(s.medicineId, s);
                 } else if (s.baseTimestamp != null && prev.baseTimestamp == null) {
                     bestByMed.put(s.medicineId, s);
                 }
+                // if both null, keep prev (no change)
             }
         }
 
@@ -493,12 +502,15 @@ public class ElderDashboardController {
                     times.addAll(tmp);
                 }
 
+                // Deduplicate times (preserve order)
+                List<String> dedupedTimes = dedupeTimesPreserveOrder(times);
+
                 String medId = medDoc.getId();
                 String name = medDoc.getString("name");
                 String type = medDoc.getString("type");
                 String amount = medDoc.getString("amount");
 
-                for (String t : times) {
+                for (String t : dedupedTimes) {
                     try {
                         LocalTime lt = LocalTime.parse(t);
                         LocalDateTime base = LocalDateTime.of(today, lt);
@@ -526,8 +538,27 @@ public class ElderDashboardController {
                         item.put("status", initialStatus);
                         item.put("createdAt", Timestamp.now());
 
-                        DocumentReference itemRef = todayRef.collection("items").document();
-                        itemRef.set(item).get();
+                        // Create deterministically to avoid duplicates:
+                        String docId = makeItemDocId(medId, t);
+                        DocumentReference itemRef = todayRef.collection("items").document(docId);
+
+                        // Transactional create-if-not-exists
+                        try {
+                            db.runTransaction(transaction -> {
+                                try {
+                                    DocumentSnapshot snap = transaction.get(itemRef).get();
+                                    if (!snap.exists()) {
+                                        transaction.set(itemRef, item);
+                                    }
+                                } catch (Exception innerEx) {
+                                    throw new RuntimeException(innerEx);
+                                }
+                                return null;
+                            }).get();
+                        } catch (Exception ex) {
+                            // Log and continue (don't fail whole loop)
+                            ex.printStackTrace();
+                        }
 
                         if ("missed".equals(initialStatus)) {
                             ScheduleItem s = new ScheduleItem();
@@ -579,12 +610,15 @@ public class ElderDashboardController {
                 List<String> times = new ArrayList<>();
                 if (timesObj instanceof List) { @SuppressWarnings("unchecked") List<String> tmp = (List<String>) timesObj; times.addAll(tmp); }
 
+                // Deduplicate times (preserve order)
+                List<String> dedupedTimes = dedupeTimesPreserveOrder(times);
+
                 String medId = medDoc.getId();
                 String name = medDoc.getString("name");
                 String type = medDoc.getString("type");
                 String amount = medDoc.getString("amount");
 
-                for (String t : times) {
+                for (String t : dedupedTimes) {
                     String key = medId + "|" + t;
                     if (existingKeys.contains(key)) continue;
 
@@ -615,8 +649,25 @@ public class ElderDashboardController {
                         item.put("status", initialStatus);
                         item.put("createdAt", Timestamp.now());
 
-                        DocumentReference itemRef = todayRef.collection("items").document();
-                        itemRef.set(item).get();
+                        // Deterministic id & transactional create
+                        String docId = makeItemDocId(medId, t);
+                        DocumentReference itemRef = todayRef.collection("items").document(docId);
+
+                        try {
+                            db.runTransaction(transaction -> {
+                                try {
+                                    DocumentSnapshot snap = transaction.get(itemRef).get();
+                                    if (!snap.exists()) {
+                                        transaction.set(itemRef, item);
+                                    }
+                                } catch (Exception innerEx) {
+                                    throw new RuntimeException(innerEx);
+                                }
+                                return null;
+                            }).get();
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
 
                         if ("missed".equals(initialStatus)) {
                             ScheduleItem s = new ScheduleItem();
@@ -910,7 +961,7 @@ public class ElderDashboardController {
         }
 
         ensureTimerViewPresent();
-        startCountdownTimeline();
+        startCountdownAnim();
 
         if (newMode == Mode.SNOOZE) {
             setConfirmButtonVisible(true, base);
@@ -932,7 +983,10 @@ public class ElderDashboardController {
     }
 
     private void stopTimelineAndShowIdle() {
-        if (countdownTimeline != null) countdownTimeline.stop();
+        if (countdownAnim != null) {
+            countdownAnim.stop();
+            countdownAnim = null;
+        }
         ensureTimerViewPresent();
         if (timerView != null) timerView.update(0.0, 0L, false);
         setConfirmButtonVisible(false, null);
@@ -940,14 +994,20 @@ public class ElderDashboardController {
         stopAlarmIfNeeded();
     }
 
-    private void startCountdownTimeline() {
-        if (countdownTimeline != null) countdownTimeline.stop();
-        countdownTimeline = new Timeline(
-                new KeyFrame(javafx.util.Duration.seconds(0), ev -> updateTimerUI()),
-                new KeyFrame(javafx.util.Duration.seconds(1))
-        );
-        countdownTimeline.setCycleCount(Timeline.INDEFINITE);
-        countdownTimeline.play();
+    private void startCountdownAnim() {
+        // stop prior if any
+        if (countdownAnim != null) {
+            countdownAnim.stop();
+            countdownAnim = null;
+        }
+
+        countdownAnim = new AnimationTimer() {
+            @Override
+            public void handle(long nowNano) {
+                updateTimerUI();
+            }
+        };
+        countdownAnim.start();
     }
 
     /* ===========================
@@ -1255,18 +1315,15 @@ public class ElderDashboardController {
         });
     }
 
-    /* ===========================
-       Pairing show/copy action
-       =========================== */
+
     @javafx.fxml.FXML
     private void handleShowPairingCode() {
         if (pairingCode == null || pairingCode.isEmpty()) {
             if (copyToastLabel != null) {
                 copyToastLabel.setText("Pairing unavailable");
                 copyToastLabel.setVisible(true);
-                PauseTransition pt = new PauseTransition(Duration.seconds(1.5));
-                pt.setOnFinished(ev -> copyToastLabel.setVisible(false));
-                pt.play();
+                // removed visual delay: hide immediately
+                copyToastLabel.setVisible(false);
             }
             return;
         }
@@ -1279,9 +1336,8 @@ public class ElderDashboardController {
         if (copyToastLabel != null) {
             copyToastLabel.setText("Pairing code copied");
             copyToastLabel.setVisible(true);
-            PauseTransition pt = new PauseTransition(Duration.seconds(1.6));
-            pt.setOnFinished(ev -> copyToastLabel.setVisible(false));
-            pt.play();
+            // removed visual delay: hide immediately
+            copyToastLabel.setVisible(false);
         }
     }
 
@@ -1369,10 +1425,6 @@ public class ElderDashboardController {
         return r;
     }
 
-    /* ===========================
-       ScheduleItem helper
-       =========================== */
-
     private static class ScheduleItem {
         String id;
         String medicineId;
@@ -1417,9 +1469,9 @@ public class ElderDashboardController {
     public void dispose() {
         try {
             teardownRealtimeListeners();
-            if (scheduler != null && !scheduler.isShutdown()) scheduler.shutdownNow();
             if (bgExecutor != null && !bgExecutor.isShutdown()) bgExecutor.shutdownNow();
-            if (countdownTimeline != null) countdownTimeline.stop();
+            if (countdownAnim != null) countdownAnim.stop();
+            if (rolloverChecker != null) rolloverChecker.stop();
             // stop and release alarm player if any
             stopAlarmIfNeeded();
         } catch (Exception ex) {
