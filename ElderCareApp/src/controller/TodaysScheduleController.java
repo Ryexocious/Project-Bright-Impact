@@ -21,6 +21,12 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.CornerRadii;
+import javafx.scene.paint.Color;
+
+
 
 /**
  * TodaysScheduleController - updated to use SessionManager.getCurrentUserId()
@@ -63,13 +69,20 @@ public class TodaysScheduleController {
         Button customDayButton = new Button("View a Custom Day Schedule");
         customDayButton.setStyle(
                 "-fx-background-color: #1a73e8; -fx-text-fill: white; " +
-                        "-fx-font-size: 14; -fx-padding: 8 20; -fx-background-radius: 6;"
+                       "-fx-font-size: 14; -fx-padding: 8 20; -fx-background-radius: 6;"
         );
         customDayButton.setOnAction(e -> openDatePicker());
 
         HBox wrapper = new HBox(customDayButton);
         wrapper.setAlignment(Pos.CENTER);
         wrapper.setPadding(new Insets(12, 0, 12, 0));
+        wrapper.setStyle(
+                "-fx-background-color: transparent; " +
+                "-fx-background-insets: 0; " +
+                "-fx-border-width: 0; " +
+                "-fx-padding: 12 0 12 0;"
+            );
+
 
         scheduleContainer.getChildren().add(wrapper);
     }
