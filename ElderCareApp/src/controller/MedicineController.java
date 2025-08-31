@@ -153,7 +153,7 @@ public class MedicineController {
         saveButton.setOnAction(this::onSaveAction);
         backButton.setOnAction(this::onBackAction);
 
-        timesListView.setFixedCellSize(28);
+        timesListView.setFixedCellSize(40);
 
         Platform.runLater(() -> {
             if (centerScroll != null) {

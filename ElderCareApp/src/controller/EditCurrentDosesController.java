@@ -18,8 +18,6 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * EditCurrentDosesController — updated to use SessionManager and defensive Firestore handling.
@@ -355,9 +353,7 @@ public class EditCurrentDosesController {
                 Instant firstDoseInstant = extractFirstDoseInstant(snap);
 
                 if (firstDoseInstant != null && nowInst.isBefore(firstDoseInstant)) {
-                    boolean confirmed = showConfirmationSync("Confirm deletion", "This medicine has not reached its first dose yet. Delete it permanently?");
-                    if (!confirmed) return;
-
+                    // Removed confirmation dialog: proceed to delete immediately
                     try {
                         ref.delete().get();
                     } catch (Exception e) {
@@ -378,10 +374,8 @@ public class EditCurrentDosesController {
                     return;
                 }
 
-                Optional<String> reasonOpt = promptForRequiredReasonSync("Reason for force end", "Please enter a reason for force ending this medicine:");
-                if (reasonOpt.isEmpty()) return;
-
-                String forceReason = reasonOpt.get();
+                // Removed reason dialog: proceed to force-end without prompting the user
+                String forceReason = "";
 
                 int takenCount = 0;
                 try {
@@ -638,12 +632,10 @@ public class EditCurrentDosesController {
                 updates.put("times", newTimesFinal);
 
                 if (changed) {
-                    Optional<String> reasonOpt = promptForRequiredReasonSync("Reason for update", "Please enter a reason for this manual update:");
-                    if (reasonOpt.isEmpty()) return;
-                    String reason = reasonOpt.get();
+                    // Removed reason dialog: apply force updated flags without asking user
                     updates.put("forceUpdated", true);
                     updates.put("forceUpdatedAt", Timestamp.now());
-                    updates.put("forceUpdatedReason", reason);
+                    updates.put("forceUpdatedReason", "");
                     // use session caretaker id if available
                     if (currentCaretakerId == null && SessionManager.isLoggedIn()) currentCaretakerId = SessionManager.getCurrentUserId();
                     if (currentCaretakerId != null) updates.put("forceUpdatedBy", currentCaretakerId);
@@ -929,53 +921,6 @@ public class EditCurrentDosesController {
             ex.printStackTrace();
             return null;
         }
-    }
-
-    private Optional<String> promptForRequiredReasonSync(String title, String header) {
-        AtomicReference<Optional<String>> resultRef = new AtomicReference<>(Optional.empty());
-        CountDownLatch latch = new CountDownLatch(1);
-        Platform.runLater(() -> {
-            try {
-                TextInputDialog dialog = new TextInputDialog();
-                dialog.setTitle(title);
-                dialog.setHeaderText(header);
-                dialog.setContentText("Reason:");
-                Optional<String> res = dialog.showAndWait();
-                if (res.isPresent() && res.get().trim().isEmpty()) {
-                    Alert err = new Alert(Alert.AlertType.WARNING);
-                    err.setTitle("Validation");
-                    err.setContentText("Reason cannot be empty. Please provide a reason or cancel.");
-                    err.showAndWait();
-                    Optional<String> res2 = dialog.showAndWait();
-                    if (res2.isPresent() && !res2.get().trim().isEmpty()) resultRef.set(Optional.of(res2.get().trim()));
-                    else resultRef.set(Optional.empty());
-                } else if (res.isPresent()) {
-                    resultRef.set(Optional.of(res.get().trim()));
-                } else resultRef.set(Optional.empty());
-            } finally {
-                latch.countDown();
-            }
-        });
-        try { latch.await(); } catch (InterruptedException e) { e.printStackTrace(); return Optional.empty(); }
-        return resultRef.get();
-    }
-
-    private boolean showConfirmationSync(String title, String content) {
-        AtomicBoolean out = new AtomicBoolean(false);
-        CountDownLatch latch = new CountDownLatch(1);
-        Platform.runLater(() -> {
-            try {
-                Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-                confirm.setTitle(title);
-                confirm.setContentText(content);
-                Optional<ButtonType> b = confirm.showAndWait();
-                out.set(b.isPresent() && b.get() == ButtonType.OK);
-            } finally {
-                latch.countDown();
-            }
-        });
-        try { latch.await(); } catch (InterruptedException e) { e.printStackTrace(); return false; }
-        return out.get();
     }
 
     private void filterEditTimeOptionsForDate(LocalDate selDate) {

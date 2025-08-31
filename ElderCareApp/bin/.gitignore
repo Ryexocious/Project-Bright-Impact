@@ -1,3 +1,9 @@
-/fxml/
-/styles/
 /controller/
+/fxml/
+/model/
+/styles/
+/tests/
+/utils/
+/MainApp.class
+/MedicineHistoryController$MedicineRecord.class
+/MedicineHistoryController.class
