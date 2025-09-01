@@ -81,9 +81,4 @@
         </content>
     </ScrollPane>
    
-    <!-- Spacer then back button at bottom-right -->
-    <HBox spacing="8">
-        <Region HBox.hgrow="ALWAYS"/>
-        <Button fx:id="backButton" text="Back to Dashboard" styleClass="btn primary" />
-    </HBox>
 </VBox>

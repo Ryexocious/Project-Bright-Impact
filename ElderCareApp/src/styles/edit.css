@@ -46,10 +46,6 @@
 }
 
 /* Primary / blue */
-.btn.primary {
-    -fx-background-color: linear-gradient(#1976d2, #1565c0);
-    -fx-text-fill: white;
-}
 
 /* Success / green */
 .btn.success {

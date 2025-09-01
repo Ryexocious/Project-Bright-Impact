@@ -51,7 +51,6 @@ public class MedicineHistoryController {
     @FXML private DatePicker ongoingFromDate;
     @FXML private DatePicker ongoingToDate;
 
-    @FXML private Button backButton;
 
     private String resolvedElderId = null;
     private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -65,7 +64,6 @@ public class MedicineHistoryController {
         setupFilters();
         detectLoggedInCaretaker();
 
-        if (backButton != null) backButton.setOnAction(e -> handleBack());
     }
 
     private void setupColumns() {
@@ -462,20 +460,7 @@ public class MedicineHistoryController {
         return null;
     }
 
-    private void handleBack() {
-        try {
-            Parent root = FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
-            javafx.stage.Stage stage = (javafx.stage.Stage) backButton.getScene().getWindow();
-            stage.setScene(new Scene(root));
-            stage.centerOnScreen();
-        } catch (IOException e) {
-            e.printStackTrace();
-            Platform.runLater(() -> {
-                Alert a = new Alert(Alert.AlertType.ERROR, "Failed to load dashboard.");
-                a.showAndWait();
-            });
-        }
-    }
+  
 
     public void refreshAfterEnd() {
         loadMedicineHistory();

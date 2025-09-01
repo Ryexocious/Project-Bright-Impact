@@ -14,6 +14,7 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import utils.FirestoreService;
 import utils.SessionManager;
+import controller.MissedDoseNotifier;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -625,6 +626,16 @@ public class MedicineController {
                     medicineNameField.requestFocus();
                     loadTodaySchedule();
                 });
+
+                // NEW: after creating a new medicine, trigger missed-dose processing for this elder
+                // This will run in background and is idempotent on the MissedDoseNotifier side.
+                try {
+                    MissedDoseNotifier.processMissedDosesForElder(resolvedElderId);
+                } catch (Exception ex) {
+                    // ensure this does not surface to the user save flow; just log
+                    ex.printStackTrace();
+                }
+
             } catch (Exception ex) {
                 ex.printStackTrace();
                 Platform.runLater(() -> statusLabel.setText("Failed to save: " + ex.getMessage()));

@@ -13,7 +13,6 @@
         <HBox alignment="CENTER_LEFT" spacing="10" styleClass="top-bar">
             <Label text="Medicine History" styleClass="header-title"/>
             <Region HBox.hgrow="ALWAYS"/>
-            <Button fx:id="backButton" text="Back to Dashboard" styleClass="light-button"/>
         </HBox>
     </top>
 

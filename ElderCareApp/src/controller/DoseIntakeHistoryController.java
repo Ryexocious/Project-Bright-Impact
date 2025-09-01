@@ -25,6 +25,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
+
+
 /*
   DoseIntakeHistoryController
 
@@ -66,7 +68,6 @@ public class DoseIntakeHistoryController {
     @FXML private DatePicker toDatePicker;
     @FXML private Button searchBtn;
     @FXML private Button clearBtn;
-    @FXML private Button backBtn;
 
     @FXML private TableView<DoseRecord> tableView;
     @FXML private TableColumn<DoseRecord, String> colDate;
@@ -78,7 +79,6 @@ public class DoseIntakeHistoryController {
     @FXML private TableColumn<DoseRecord, String> colLoggedAt;
 
     @FXML private Label noRecordsLabel;
-    @FXML private Label hintLabel;
 
     /*
       Formatters and state:
@@ -127,7 +127,7 @@ public class DoseIntakeHistoryController {
             if (nameDebounce != null) nameDebounce.stop();
             clearFilters();
         });
-        backBtn.setOnAction(e -> handleBack());
+
 
         colDate.setCellValueFactory(new PropertyValueFactory<>("dateStr"));
         colTime.setCellValueFactory(new PropertyValueFactory<>("timeStr"));
@@ -158,7 +158,6 @@ public class DoseIntakeHistoryController {
 
         detectLoggedInCaretaker();
 
-        hintLabel.setText("Tip: leave date range empty to search last 7 days");
     }
 
     /*
@@ -413,17 +412,7 @@ public class DoseIntakeHistoryController {
       - Navigate back to the caretaker dashboard by loading the FXML and replacing the current scene.
       - Any IO exceptions are printed and an error dialog is shown to the user.
     */
-    private void handleBack() {
-        try {
-            Parent root = FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
-            Stage stage = (Stage) backBtn.getScene().getWindow();
-            stage.setScene(new Scene(root));
-            stage.centerOnScreen();
-        } catch (IOException e) {
-            e.printStackTrace();
-            showError("Failed to go back to dashboard.");
-        }
-    }
+
 
     /*
       DoseRecord DTO
