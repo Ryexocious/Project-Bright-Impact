@@ -862,6 +862,21 @@ public class ElderDashboardController {
                 }
 
                 EmailService.sendMissedDosesEmail(elderUsername == null ? "Elder" : elderUsername, caretakerEmails, grouped);
+                for (QueryDocumentSnapshot doc : caretakersSnapshot.getDocuments()) {
+                    String caretakerId = doc.getId();  // Firestore doc ID = caretaker userId
+                    String email = doc.getString("email");
+                    if (email != null && !email.isEmpty()) caretakerEmails.add(email);
+
+                    Map<String, Object> notif = new HashMap<>();
+                    notif.put("elderId", elderId);
+                    notif.put("caretakerId", caretakerId);
+                    notif.put("type", "missedDose");
+                    notif.put("message", "Elder " + elderUsername + " missed dose(s): " + grouped.toString());
+                    notif.put("timestamp", System.currentTimeMillis());
+                    notif.put("read", false);
+
+                    db.collection("notifications").add(notif);
+                }
 
             } catch (InterruptedException | ExecutionException ex) {
                 ex.printStackTrace();
@@ -1277,6 +1292,19 @@ public class ElderDashboardController {
                     EmailService.sendHelpRequestEmail(elderUsername, caretakerEmails);
                 } else {
                     System.out.println("No caretakers found for elder: " + elderId);
+                }
+                for (QueryDocumentSnapshot doc : caretakersSnapshot.getDocuments()) {
+                    String caretakerId = doc.getId();
+
+                    Map<String, Object> notif = new HashMap<>();
+                    notif.put("elderId", elderId);
+                    notif.put("caretakerId", caretakerId);
+                    notif.put("type", "helpRequest");
+                    notif.put("message", "Elder " + elderUsername + " pressed the HELP button!");
+                    notif.put("timestamp", System.currentTimeMillis());
+                    notif.put("read", false);
+
+                    db.collection("notifications").add(notif);
                 }
 
             } catch (InterruptedException | ExecutionException e) { e.printStackTrace(); }

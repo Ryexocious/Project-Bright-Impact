@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import utils.SessionManager;
 
 public class RegistrationController {
 
@@ -92,6 +93,7 @@ public class RegistrationController {
 
                 if ("Elder".equals(role)) {
                     // Create elder record
+                	
                     Map<String, Object> elderData = new HashMap<>();
                     elderData.put("username", username);
                     elderData.put("password", password);
@@ -104,10 +106,11 @@ public class RegistrationController {
                     elderData.put("elderId", elderRef.getId());
 
                     elderRef.set(elderData).get();
+                    SessionManager.createSession(elderRef.getId(), "elder");
 
                     Platform.runLater(() -> {
                         messageLabel.setText("Elder registered. Share pairing code: " + pairingCode);
-                        goToPostRegistration(role, pairingCode);
+                        goToPostRegistration(role, pairingCode,username,elderRef.getId());
                     });
 
                 } else {
@@ -140,10 +143,11 @@ public class RegistrationController {
                     users.document(elderId).update("caretakers", com.google.cloud.firestore.FieldValue.arrayUnion(caretakerRef.getId()));
 
                     EmailService.sendConfirmationEmail(email, username);
+                    SessionManager.createSession(caretakerRef.getId(), "caretaker");
 
                     Platform.runLater(() -> {
                         messageLabel.setText("Caretaker registered and linked to elder.");
-                        goToPostRegistration(role, elderDoc.getString("name")); // Show linked elder name
+                        goToPostRegistration(role, elderDoc.getString("name"),username,caretakerRef.getId()); // Show linked elder name
                     });
                 }
 
@@ -154,13 +158,13 @@ public class RegistrationController {
         }).start();
     }
 
-    private void goToPostRegistration(String role, String data) {
+    private void goToPostRegistration(String role, String data,String username, String userID) {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/post_registration.fxml"));
             Parent root = loader.load();
 
             PostRegistrationController controller = loader.getController();
-            controller.initializeView(role, data);
+            controller.initializeView(role, data,username,userID);
 
             Stage stage = (Stage) registerButton.getScene().getWindow();
             Scene scene = new Scene(root);

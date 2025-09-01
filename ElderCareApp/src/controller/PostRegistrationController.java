@@ -8,6 +8,15 @@ import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.stage.Stage;
+
+import java.io.IOException;
+
+import utils.SessionManager; // adjust the package if SessionManager is in another package
+
 
 public class PostRegistrationController {
 
@@ -25,7 +34,7 @@ public class PostRegistrationController {
      * @param role "elder" or "caretaker"
      * @param pairingCodeOrElderName Pairing code for Elder, Elder name for Caretaker
      */
-    public void initializeView(String role, String pairingCodeOrElderName) {
+    public void initializeView(String role, String pairingCodeOrElderName,String username,String userID) {
         if (role.equalsIgnoreCase("elder")) {
             elderSection.setVisible(true);
             elderSection.setManaged(true);
@@ -68,8 +77,34 @@ public class PostRegistrationController {
 
         // Dashboard button placeholder
         dashboardButton.setOnAction(e -> {
-            // TODO: Implement navigation to the main dashboard
-            System.out.println("Go to Dashboard clicked!");
+            try {
+                Stage stage = (Stage) dashboardButton.getScene().getWindow();
+
+                if (role.equalsIgnoreCase("elder")) {
+                    FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/elder_dashboard.fxml"));
+                    Parent root = loader.load();
+
+                    // Pass username to elder dashboard
+                    ElderDashboardController elderCtrl = loader.getController();
+                    elderCtrl.initializeElder(username);
+
+                    stage.setScene(new Scene(root));
+                    stage.centerOnScreen();
+                } else if (role.equalsIgnoreCase("caretaker")) {
+                    FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
+                    Parent root = loader.load();
+
+                    stage.setScene(new Scene(root));
+                    stage.centerOnScreen();
+                } else {
+                    System.out.println("Unknown role, cannot navigate to dashboard.");
+                }
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
         });
+
+
     }
+    
 }

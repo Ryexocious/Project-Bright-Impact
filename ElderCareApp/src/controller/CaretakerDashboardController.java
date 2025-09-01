@@ -17,6 +17,7 @@ import java.time.format.DateTimeFormatter;
 
 import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.FieldValue;
 import com.google.cloud.firestore.Firestore;
 import javafx.application.Platform;
@@ -27,7 +28,8 @@ import utils.SessionManager;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-
+import java.util.ArrayList;
+import java.util.List;
 public class CaretakerDashboardController {
 
     @FXML private Label caretakerNameLabel;
@@ -49,6 +51,9 @@ public class CaretakerDashboardController {
     @FXML private Button doseIntakeHistoryBtn;
     @FXML private Button vitalsMonitorBtn;
     @FXML private Label avatarInitialsLabel;
+    @FXML private Button notificationBell;
+    @FXML private Label notificationCount;
+
 
     // sample stats data
     private int todayDoses = 5;
@@ -61,6 +66,12 @@ public class CaretakerDashboardController {
         handleViewToday();
         // Start loading caretaker name (will update UI when ready)
         loadCaretakerNameFromSession();
+
+        notificationCount.setVisible(false);
+        notificationCount.setText("");
+        loadNotifications();
+
+
     }
 
     private void loadCaretakerNameFromSession() {
@@ -265,5 +276,73 @@ public class CaretakerDashboardController {
         a.setContentText(msg);
         a.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
         a.showAndWait();
+    }
+    private void loadNotifications() {
+        String caretakerId = SessionManager.getCurrentUserId();
+        if (caretakerId == null) return;
+
+        new Thread(() -> {
+            try {
+                Firestore db = FirestoreService.getFirestore();
+                var snap = db.collection("notifications")
+                        .whereEqualTo("caretakerId", caretakerId)
+                        .whereEqualTo("read", false)
+                        .get()
+                        .get();
+
+                List<QueryDocumentSnapshot> docs = snap.getDocuments(); // Use QueryDocumentSnapshot
+                List<String> messages = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : docs) {
+                    messages.add(doc.getString("message"));
+                }
+
+                Platform.runLater(() -> showNotifications(messages, docs));
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private void showNotifications(List<String> messages, List<? extends DocumentSnapshot> docs) {
+        Platform.runLater(() -> {
+            if (messages.isEmpty()) {
+                notificationCount.setVisible(false); // hide badge
+                notificationCount.setText("");
+            } else {
+                notificationCount.setVisible(true);  // show badge
+                notificationCount.setText(String.valueOf(messages.size()));
+            }
+        });
+
+        // Set the bell action
+        notificationBell.setOnAction(evt -> {
+            if (messages.isEmpty()) return; // nothing to show
+
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, String.join("\n\n", messages));
+            alert.setHeaderText("Notifications");
+            alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
+            alert.showAndWait();
+
+            // After viewing, mark as read
+            markAsRead(docs);
+
+            // Hide the badge after marking read
+            Platform.runLater(() -> {
+                notificationCount.setVisible(false);
+                notificationCount.setText("");
+            });
+        });
+    }
+
+
+    private void markAsRead(List<? extends DocumentSnapshot> docs) {
+        for (DocumentSnapshot doc : docs) {
+            try {
+                doc.getReference().update("read", true).get();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
