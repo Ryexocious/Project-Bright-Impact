@@ -13,7 +13,7 @@
 
     <top>
         <HBox alignment="CENTER_LEFT" spacing="8" styleClass="top-bar">
-            <Label text="ElderCare — Medicine Scheduler" styleClass="header-title"/>
+            <Label text="BrightImpact — Medicine Scheduler" styleClass="header-title"/>
             <Region HBox.hgrow="ALWAYS"/>
             <!-- Close button removed as requested -->
         </HBox>

@@ -43,7 +43,6 @@ public class EditCurrentDosesController {
     @FXML private ListView<String> timesListView;
     @FXML private Button addTimeButton, removeTimeButton, clearTimesButton, updateMedicineBtn;
     @FXML private Label progressLabel;
-    @FXML private Button backButton;
     @FXML private ScrollPane editScroll;
 
     private final ObservableList<MedicineRecord> medicineList = FXCollections.observableArrayList();
@@ -89,7 +88,6 @@ public class EditCurrentDosesController {
         editScroll.setVisible(false);
         editScroll.setManaged(false);
 
-        backButton.setOnAction(e -> handleBack());
 
         editStartDate.valueProperty().addListener((obs, oldV, newV) -> filterEditTimeOptionsForDate(newV));
 
@@ -172,6 +170,8 @@ public class EditCurrentDosesController {
 
     /**
      * Prefer SessionManager for current user; fallback to legacy query if session missing.
+     * Added: call MissedDoseNotifier.processMissedDosesForElder(...) once the elder is resolved,
+     * so caretaker login will trigger missed-dose checks for the linked elder.
      */
     private void detectLoggedInCaretaker() {
         bgExecutor.submit(() -> {
@@ -185,6 +185,9 @@ public class EditCurrentDosesController {
                         if (caret.exists() && caret.contains("elderId")) {
                             resolvedElderId = caret.getString("elderId");
                             loadMedicines();
+
+                            // NEW: process missed doses once caretaker logs in and elder resolved
+                            bgExecutor.submit(() -> MissedDoseNotifier.processMissedDosesForElder(resolvedElderId));
                         } else {
                             // no linked elder
                             Platform.runLater(() -> {
@@ -215,6 +218,9 @@ public class EditCurrentDosesController {
                     if (elderIdObj != null) {
                         resolvedElderId = elderIdObj.toString();
                         loadMedicines();
+
+                        // NEW: process missed doses once caretaker logs in and elder resolved
+                        bgExecutor.submit(() -> MissedDoseNotifier.processMissedDosesForElder(resolvedElderId));
                     } else {
                         Platform.runLater(() -> {
                             medicineList.clear();
@@ -426,6 +432,9 @@ public class EditCurrentDosesController {
                 if (resolvedElderId != null) {
                     purgeMedicineFromAllSchedules(resolvedElderId, ref.getId());
                     writeScheduleSyncPing(resolvedElderId);
+
+                    // NEW: after ending a medicine and purging schedules, ensure missed-dose processing (in case this triggers missed marking)
+                    bgExecutor.submit(() -> MissedDoseNotifier.processMissedDosesForElder(resolvedElderId));
                 }
 
                 Platform.runLater(() -> {
@@ -505,8 +514,7 @@ public class EditCurrentDosesController {
                     boolean disable = !now.isBefore(firstDoseInstant);
                     Platform.runLater(() -> {
                         editStartDate.setDisable(disable);
-                        if (disable) editStartDate.setTooltip(new Tooltip("Start date locked: the first dose time has passed."));
-                        else editStartDate.setTooltip(null);
+                        if (disable) editStartDate.setTooltip(new Tooltip("Start date locked: the first dose time has passed.")); else editStartDate.setTooltip(null);
                     });
                 } else {
                     LocalTime firstTime = med.getFirstDoseTime();
@@ -680,6 +688,9 @@ public class EditCurrentDosesController {
                         );
 
                         writeScheduleSyncPing(resolvedElderId);
+
+                        // NEW: after creating today's items for updated med, run missed-dose processing
+                        bgExecutor.submit(() -> MissedDoseNotifier.processMissedDosesForElder(resolvedElderId));
                     } catch (Exception ex) {
                         ex.printStackTrace();
                     }
@@ -951,17 +962,6 @@ public class EditCurrentDosesController {
         }
     }
 
-    private void handleBack() {
-        try {
-            javafx.scene.Parent root = javafx.fxml.FXMLLoader.load(getClass().getResource("/fxml/caretaker_dashboard.fxml"));
-            javafx.stage.Stage stage = (javafx.stage.Stage) backButton.getScene().getWindow();
-            stage.setScene(new javafx.scene.Scene(root));
-            stage.centerOnScreen();
-        } catch (IOException e) {
-            e.printStackTrace();
-            showAlert("Failed to load dashboard.");
-        }
-    }
 
     public static class MedicineRecord {
         private String name, type, amount;
@@ -1175,8 +1175,10 @@ public class EditCurrentDosesController {
                     item.put("status", initialStatus);
                     item.put("createdAt", Timestamp.now());
 
+                    DocumentReference createdRef;
                     try {
-                        itemsCol.document().set(item).get();
+                        createdRef = itemsCol.document();
+                        createdRef.set(item).get();
                     } catch (Exception e) {
                         if (isNotFound(e)) {
                             // day doc or path disappeared concurrently; skip this item
@@ -1185,9 +1187,25 @@ public class EditCurrentDosesController {
                     }
 
                     if ("missed".equals(initialStatus)) {
+                        // log missed dose
                         logMissedDoseForMedicine(elderId, medId, name, type, amount, baseTs);
-                    }
 
+                        // NEW: notify immediately for this newly-created missed item (real-time behavior)
+                        MissedDoseNotifier.ScheduleMissedItem smi = new MissedDoseNotifier.ScheduleMissedItem();
+                        smi.docRef = createdRef;
+                        smi.medicineId = medId;
+                        smi.name = name;
+                        smi.type = type;
+                        smi.amount = amount;
+                        smi.baseInstant = baseInstant;
+                        smi.time = t;
+                        // best-effort, synchronous-ish but safe to call (it handles idempotency internally)
+                        try {
+                            MissedDoseNotifier.notifySingleMissedItem(elderId, smi);
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
+                    }
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 }

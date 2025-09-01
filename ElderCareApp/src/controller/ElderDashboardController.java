@@ -24,7 +24,7 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import model.TimerController;
 import javafx.geometry.Pos;
@@ -34,7 +34,12 @@ import javafx.animation.Timeline;
 import javafx.animation.KeyFrame;
 import javafx.util.Duration;
 
-
+/**
+ * Updated ElderDashboardController
+ * - scheduleExecutor (single-threaded) serializes ensureTodayScheduleAndProcess runs
+ * - markItemMissedAndLog is transactional & deterministic to avoid duplicate missed_doses logs
+ * - delegates grouped notifications to MissedDoseNotifier (user-provided file)
+ */
 public class ElderDashboardController {
 
     private final Object lock = new Object();
@@ -58,7 +63,6 @@ public class ElderDashboardController {
     @javafx.fxml.FXML private VBox medsListBox;
     @javafx.fxml.FXML private Button confirmIntakeButton;
 
-    // replaced Timeline countdown with AnimationTimer for smoother updates
     private AnimationTimer countdownAnim;
 
     // timer target and window
@@ -85,6 +89,14 @@ public class ElderDashboardController {
         t.setDaemon(true);
         return t;
     });
+
+    // SINGLE-THREADED executor to serialize schedule processing (prevents concurrent mark/log runs)
+    private final ExecutorService scheduleExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        return t;
+    });
+    private final AtomicBoolean scheduleRunning = new AtomicBoolean(false);
 
     private ListenerRegistration medsListener = null;
     private ListenerRegistration todayItemsListener = null;
@@ -157,8 +169,6 @@ public class ElderDashboardController {
         });
     }
 
-    // Make a deterministic and safe document id for a med/time pair.
-    // e.g. medId + "|" + time (with ":" replaced) and non-safe chars turned into '_'
     private String makeItemDocId(String medId, String time) {
         if (medId == null) medId = "mednull";
         if (time == null) time = "tnull";
@@ -217,6 +227,7 @@ public class ElderDashboardController {
                     });
 
                     setupRealtimeListenersAndRollover();
+                    // schedule processing — ensureTodayScheduleAndProcess will submit into scheduleExecutor
                     ensureTodayScheduleAndProcess();
 
                 } else {
@@ -270,10 +281,6 @@ public class ElderDashboardController {
             lastShownConfirmGroupBase = groupBase;
         }
     }
-
-    /* ===========================
-       Realtime listeners & rollover
-       =========================== */
     private void setupRealtimeListenersAndRollover() {
         if (elderId == null) return;
         Firestore db = FirestoreService.getFirestore();
@@ -281,8 +288,6 @@ public class ElderDashboardController {
         tryAttachMedsListener(db);
         attachTodayItemsListenerForCurrentDay(db);
 
-        // Rollover checker on FX thread instead of a background scheduled executor.
-        // Runs frequently and deterministically on FX thread to avoid cross-thread jitter.
         if (rolloverChecker != null) {
             rolloverChecker.stop();
             rolloverChecker = null;
@@ -296,7 +301,8 @@ public class ElderDashboardController {
                 Firestore fdb = FirestoreService.getFirestore();
                 detachTodayItemsListener();
                 attachTodayItemsListenerForCurrentDay(fdb);
-                bgExecutor.submit(this::ensureTodayScheduleAndProcess);
+                // schedule processing safely
+                ensureTodayScheduleAndProcess();
             }
         }));
         rolloverChecker.setCycleCount(Timeline.INDEFINITE);
@@ -315,13 +321,8 @@ public class ElderDashboardController {
                 System.err.println("Medicines listener error: " + error);
                 return;
             }
-            bgExecutor.submit(() -> {
-                try {
-                    ensureTodayScheduleAndProcess();
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                }
-            });
+            // schedule a serialized rescan (ensureTodayScheduleAndProcess will queue it)
+            ensureTodayScheduleAndProcess();
         });
     }
 
@@ -380,7 +381,7 @@ public class ElderDashboardController {
             ScheduleItem prev = bestByMed.get(s.medicineId);
             if (prev == null) bestByMed.put(s.medicineId, s);
             else {
-                // --> CHANGED: choose earliest baseTimestamp (closest upcoming), not the later one
+                // choose earliest baseTimestamp (closest upcoming), not the later one
                 if (s.baseTimestamp != null && prev.baseTimestamp != null) {
                     if (s.baseTimestamp.isBefore(prev.baseTimestamp)) bestByMed.put(s.medicineId, s);
                 } else if (s.baseTimestamp != null && prev.baseTimestamp == null) {
@@ -425,52 +426,66 @@ public class ElderDashboardController {
         detachTodayItemsListener();
     }
 
-    /* ===========================
-       Schedule management
-       =========================== */
 
+    /**
+     * Public-facing entrypoint that queues a single serialized schedule processing run.
+     * This method returns immediately; actual work runs on scheduleExecutor and is guarded
+     * so multiple callers won't cause concurrent runs.
+     */
     private void ensureTodayScheduleAndProcess() {
         if (elderId == null) return;
-        Firestore db = FirestoreService.getFirestore();
-        String todayId = LocalDate.now().format(dateIdFmt);
-        DocumentReference todayRef = db.collection("users").document(elderId)
-                .collection("schedules").document(todayId);
 
-        bgExecutor.submit(() -> {
+        // If another schedule run is in progress, skip — the running one will re-scan at the end.
+        if (!scheduleRunning.compareAndSet(false, true)) {
+            return;
+        }
+
+        scheduleExecutor.submit(() -> {
             try {
-                DocumentSnapshot todaySnap = todayRef.get().get();
-                if (todaySnap.exists()) {
-                    syncScheduleWithMedicines(todayRef);
-                    updateStatusesForToday(todayRef);
-                    loadTodayItemsAndStartTimer(todayRef);
-                } else {
-                    // handle leftover from yesterday
-                    String yesterdayId = LocalDate.now().minusDays(1).format(dateIdFmt);
-                    DocumentReference yRef = db.collection("users").document(elderId)
-                            .collection("schedules").document(yesterdayId);
-                    DocumentSnapshot ySnap = yRef.get().get();
-                    if (ySnap.exists()) {
-                        QuerySnapshot pending = yRef.collection("items")
-                                .whereEqualTo("status", "hasnt_arrived")
-                                .get().get();
+                Firestore db = FirestoreService.getFirestore();
+                String todayId = LocalDate.now().format(dateIdFmt);
+                DocumentReference todayRef = db.collection("users").document(elderId)
+                        .collection("schedules").document(todayId);
 
-                        List<ScheduleItem> newlyMarked = new ArrayList<>();
-                        for (DocumentSnapshot p : pending.getDocuments()) {
-                            ScheduleItem si = ScheduleItem.fromSnapshot(p);
-                            markItemMissedAndLog(p.getReference(), si, db);
-                            newlyMarked.add(si);
-                        }
+                try {
+                    DocumentSnapshot todaySnap = todayRef.get().get();
+                    if (todaySnap.exists()) {
+                        syncScheduleWithMedicines(todayRef);
+                        updateStatusesForToday(todayRef);
+                        loadTodayItemsAndStartTimer(todayRef);
+                    } else {
+                        // handle leftover from yesterday
+                        String yesterdayId = LocalDate.now().minusDays(1).format(dateIdFmt);
+                        DocumentReference yRef = db.collection("users").document(elderId)
+                                .collection("schedules").document(yesterdayId);
+                        DocumentSnapshot ySnap = yRef.get().get();
+                        if (ySnap.exists()) {
+                            QuerySnapshot pending = yRef.collection("items")
+                                    .whereEqualTo("status", "hasnt_arrived")
+                                    .get().get();
 
-                        if (!newlyMarked.isEmpty()) {
-                            notifyCaretakersAboutMissedDoses(newlyMarked);
+                            List<ScheduleItem> newlyMarked = new ArrayList<>();
+                            for (DocumentSnapshot p : pending.getDocuments()) {
+                                ScheduleItem si = ScheduleItem.fromSnapshot(p);
+                                boolean marked = markItemMissedAndLog(p.getReference(), si, db);
+                                if (marked) newlyMarked.add(si);
+                            }
+
+                            if (!newlyMarked.isEmpty()) {
+                                // delegate notification (MissedDoseNotifier should also avoid duplicates)
+                                final List<ScheduleItem> nm = new ArrayList<>(newlyMarked);
+                                bgExecutor.submit(() -> notifyCaretakersAboutMissedDoses(nm));
+                            }
                         }
+                        createTodayScheduleFromMedicines(todayRef);
+                        updateStatusesForToday(todayRef);
+                        loadTodayItemsAndStartTimer(todayRef);
                     }
-                    createTodayScheduleFromMedicines(todayRef);
-                    updateStatusesForToday(todayRef);
-                    loadTodayItemsAndStartTimer(todayRef);
+                } catch (InterruptedException | ExecutionException ex) {
+                    ex.printStackTrace();
                 }
-            } catch (InterruptedException | ExecutionException ex) {
-                ex.printStackTrace();
+            } finally {
+                scheduleRunning.set(false);
             }
         });
     }
@@ -488,6 +503,8 @@ public class ElderDashboardController {
             QuerySnapshot medsSnap = medsCol.get().get();
             LocalDate today = LocalDate.now();
             LocalDateTime now = LocalDateTime.now();
+
+            List<ScheduleItem> newlyMarked = new ArrayList<>();
 
             for (DocumentSnapshot medDoc : medsSnap.getDocuments()) {
                 @SuppressWarnings("unchecked")
@@ -561,6 +578,7 @@ public class ElderDashboardController {
                         }
 
                         if ("missed".equals(initialStatus)) {
+                            // mark/log via transactional helper to avoid races
                             ScheduleItem s = new ScheduleItem();
                             s.id = itemRef.getId();
                             s.medicineId = medId;
@@ -573,12 +591,18 @@ public class ElderDashboardController {
                             s.status = "missed";
                             s.docRef = itemRef;
 
-                            markItemMissedAndLog(itemRef, s, db);
+                            boolean marked = markItemMissedAndLog(itemRef, s, db);
+                            if (marked) newlyMarked.add(s);
                         }
                     } catch (Exception ex) {
                         // skip parse errors
                     }
                 }
+            }
+
+            if (!newlyMarked.isEmpty()) {
+                final List<ScheduleItem> nm = new ArrayList<>(newlyMarked);
+                bgExecutor.submit(() -> notifyCaretakersAboutMissedDoses(nm));
             }
         } catch (InterruptedException | ExecutionException ex) {
             ex.printStackTrace();
@@ -600,6 +624,8 @@ public class ElderDashboardController {
             QuerySnapshot medsSnap = db.collection("users").document(elderId).collection("medicines").get().get();
             LocalDate today = LocalDate.now();
             LocalDateTime now = LocalDateTime.now();
+
+            List<ScheduleItem> newlyMarked = new ArrayList<>();
 
             for (DocumentSnapshot medDoc : medsSnap.getDocuments()) {
                 @SuppressWarnings("unchecked")
@@ -682,7 +708,8 @@ public class ElderDashboardController {
                             s.status = "missed";
                             s.docRef = itemRef;
 
-                            markItemMissedAndLog(itemRef, s, db);
+                            boolean marked = markItemMissedAndLog(itemRef, s, db);
+                            if (marked) newlyMarked.add(s);
                         }
 
                         existingKeys.add(key);
@@ -690,6 +717,11 @@ public class ElderDashboardController {
                         // skip parse errors
                     }
                 }
+            }
+
+            if (!newlyMarked.isEmpty()) {
+                final List<ScheduleItem> nm = new ArrayList<>(newlyMarked);
+                bgExecutor.submit(() -> notifyCaretakersAboutMissedDoses(nm));
             }
         } catch (InterruptedException | ExecutionException ex) {
             ex.printStackTrace();
@@ -710,10 +742,6 @@ public class ElderDashboardController {
             return true;
         }
     }
-
-    /* ===========================
-       Update statuses & missed logging (grouped notifications)
-       =========================== */
 
     private void updateStatusesForToday(DocumentReference todayRef) {
         Firestore db = FirestoreService.getFirestore();
@@ -744,9 +772,11 @@ public class ElderDashboardController {
                         batchUpdates.add(new ApiUpdate(d.getReference(), Map.of("status", "in_snooze_duration")));
                     }
                 } else {
-                    // mark missed and collect
-                    toNotifyMissed.add(s);
-                    markItemMissedAndLog(d.getReference(), s, db);
+                    // mark missed and collect only if newly marked
+                    boolean marked = markItemMissedAndLog(d.getReference(), s, db);
+                    if (marked) {
+                        toNotifyMissed.add(s);
+                    }
                 }
             }
 
@@ -756,7 +786,8 @@ public class ElderDashboardController {
 
             // send grouped notification once for all missed items
             if (!toNotifyMissed.isEmpty()) {
-                notifyCaretakersAboutMissedDoses(toNotifyMissed);
+                final List<ScheduleItem> tnm = new ArrayList<>(toNotifyMissed);
+                bgExecutor.submit(() -> notifyCaretakersAboutMissedDoses(tnm));
             }
         } catch (InterruptedException | ExecutionException ex) {
             ex.printStackTrace();
@@ -769,126 +800,95 @@ public class ElderDashboardController {
         ApiUpdate(DocumentReference r, Map<String, Object> d) { ref = r; data = d; }
     }
 
-    private void markItemMissedAndLog(DocumentReference itemRef, ScheduleItem s, Firestore db) {
+    /**
+     * Transactionally mark an item missed (if not already missed/taken) and create a deterministic missed_doses log.
+     * Returns true if this call performed the marking & logging (i.e. it was newly marked).
+     */
+    private boolean markItemMissedAndLog(DocumentReference itemRef, ScheduleItem s, Firestore db) {
+        if (itemRef == null) return false;
         try {
-            Map<String, Object> upd = new HashMap<>();
-            upd.put("status", "missed");
-            upd.put("missedLoggedAt", Timestamp.now());
-            itemRef.update(upd).get();
+            // deterministic missed_doses doc id based on schedule item id to avoid duplicates
+            String missedDocId = itemRef.getId();
 
-            CollectionReference missedCol = db.collection("users").document(elderId).collection("missed_doses");
-            Map<String, Object> log = new HashMap<>();
-            log.put("medicineId", s.medicineId);
-            log.put("name", s.name);
-            log.put("type", s.type);
-            log.put("amount", s.amount);
-            if (s.baseTimestamp != null) {
-                Instant inst = s.baseTimestamp.atZone(ZoneId.systemDefault()).toInstant();
-                com.google.cloud.Timestamp missedDoseTs = com.google.cloud.Timestamp.ofTimeSecondsAndNanos(inst.getEpochSecond(), inst.getNano());
-                log.put("missedDoseTime", missedDoseTs);
-            } else {
-                log.put("missedDoseTime", Timestamp.now());
-            }
-            log.put("loggedAt", Timestamp.now());
-            missedCol.document().set(log).get();
-        } catch (InterruptedException | ExecutionException ex) {
+            Boolean result = db.runTransaction((Transaction.Function<Boolean>) transaction -> {
+                DocumentSnapshot snap = transaction.get(itemRef).get();
+                String existing = (snap != null && snap.contains("status")) ? snap.getString("status") : null;
+                if ("missed".equals(existing) || "taken".equals(existing)) {
+                    return false;
+                }
+
+                // update the item to missed inside the transaction
+                Map<String, Object> upd = new HashMap<>();
+                upd.put("status", "missed");
+                upd.put("missedLoggedAt", Timestamp.now());
+                transaction.update(itemRef, upd);
+
+                // prepare log map
+                CollectionReference missedCol = db.collection("users").document(elderId).collection("missed_doses");
+                Map<String, Object> log = new HashMap<>();
+                log.put("medicineId", s != null ? s.medicineId : (snap.contains("medicineId") ? snap.getString("medicineId") : null));
+                log.put("name", s != null ? s.name : (snap.contains("name") ? snap.getString("name") : null));
+                log.put("type", s != null ? s.type : (snap.contains("type") ? snap.getString("type") : null));
+                log.put("amount", s != null ? s.amount : (snap.contains("amount") ? snap.getString("amount") : null));
+                // missedDoseTime
+                Object baseO = snap.contains("baseTimestamp") ? snap.get("baseTimestamp") : null;
+                if (baseO instanceof com.google.cloud.Timestamp) {
+                    com.google.cloud.Timestamp ts = (com.google.cloud.Timestamp) baseO;
+                    log.put("missedDoseTime", ts);
+                } else {
+                    log.put("missedDoseTime", Timestamp.now());
+                }
+                log.put("loggedAt", Timestamp.now());
+                log.put("itemRefPath", itemRef.getPath());
+
+                // set deterministic doc id
+                transaction.set(missedCol.document(missedDocId), log);
+
+                return true;
+            }).get();
+
+            return Boolean.TRUE.equals(result);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (ExecutionException ee) {
+            // concurrent modification or other error; treat as not newly marked
+            // ee.printStackTrace();
+            return false;
+        } catch (Exception ex) {
             ex.printStackTrace();
+            return false;
         }
     }
 
     /**
      * Notify caretakers with ONE grouped email describing the provided missed items.
+     * Delegates to MissedDoseNotifier to centralize idempotent notifications.
      */
     private void notifyCaretakersAboutMissedDoses(List<ScheduleItem> missedItems) {
         if (missedItems == null || missedItems.isEmpty()) return;
+        // Convert ScheduleItem -> MissedDoseNotifier.ScheduleMissedItem
+        List<MissedDoseNotifier.ScheduleMissedItem> list = new ArrayList<>();
+        for (ScheduleItem si : missedItems) {
+            MissedDoseNotifier.ScheduleMissedItem m = new MissedDoseNotifier.ScheduleMissedItem();
+            m.docRef = si.docRef;
+            m.medicineId = si.medicineId;
+            m.name = si.name;
+            m.type = si.type;
+            m.amount = si.amount;
+            if (si.baseTimestamp != null) m.baseInstant = si.baseTimestamp.atZone(ZoneId.systemDefault()).toInstant();
+            m.time = si.time;
+            list.add(m);
+        }
 
-        bgExecutor.submit(() -> {
-            try {
-                Firestore db = FirestoreService.getFirestore();
-                CollectionReference usersCol = db.collection("users");
-
-                // gather caretaker emails
-                List<String> caretakerEmails = new ArrayList<>();
-                QuerySnapshot caretakersSnapshot = usersCol
-                        .whereEqualTo("role", "caretaker")
-                        .whereEqualTo("elderId", elderId)
-                        .get()
-                        .get();
-
-                for (QueryDocumentSnapshot doc : caretakersSnapshot.getDocuments()) {
-                    String email = doc.getString("email");
-                    if (email != null && !email.isEmpty()) caretakerEmails.add(email);
-                }
-
-                if (caretakerEmails.isEmpty()) {
-                    // fallback to elder.caretakers list
-                    DocumentSnapshot elderSnap = usersCol.document(elderId).get().get();
-                    Object caretakersField = elderSnap.get("caretakers");
-                    if (caretakersField instanceof List) {
-                        @SuppressWarnings("unchecked")
-                        List<String> caretakerIds = (List<String>) caretakersField;
-                        for (String cid : caretakerIds) {
-                            try {
-                                DocumentSnapshot caretDocSnap = usersCol.document(cid).get().get();
-                                if (caretDocSnap != null && caretDocSnap.exists()) {
-                                    String e = caretDocSnap.getString("email");
-                                    if (e != null && !e.isEmpty()) caretakerEmails.add(e);
-                                }
-                            } catch (InterruptedException | ExecutionException ex) { ex.printStackTrace(); }
-                        }
-                    }
-                }
-
-                if (caretakerEmails.isEmpty()) {
-                    System.out.println("No caretakers found to notify for elder: " + elderId);
-                    return;
-                }
-
-                // Group missed items by scheduled base datetime (yyyy-MM-dd HH:mm)
-                Map<String, List<String>> grouped = new HashMap<>();
-                DateTimeFormatter keyFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-
-                for (ScheduleItem si : missedItems) {
-                    String key;
-                    if (si.baseTimestamp != null) {
-                        key = si.baseTimestamp.format(keyFmt);
-                    } else {
-                        String time = (si.time != null) ? si.time : "unknown time";
-                        key = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE) + " " + time;
-                    }
-
-                    String desc = (si.name == null ? "(unknown)" : si.name) + " — " + (si.amount == null ? "" : si.amount);
-                    grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(desc);
-                }
-
-                EmailService.sendMissedDosesEmail(elderUsername == null ? "Elder" : elderUsername, caretakerEmails, grouped);
-                for (QueryDocumentSnapshot doc : caretakersSnapshot.getDocuments()) {
-                    String caretakerId = doc.getId();  // Firestore doc ID = caretaker userId
-                    String email = doc.getString("email");
-                    if (email != null && !email.isEmpty()) caretakerEmails.add(email);
-
-                    Map<String, Object> notif = new HashMap<>();
-                    notif.put("elderId", elderId);
-                    notif.put("caretakerId", caretakerId);
-                    notif.put("type", "missedDose");
-                    notif.put("message", "Elder " + elderUsername + " missed dose(s): " + grouped.toString());
-                    notif.put("timestamp", System.currentTimeMillis());
-                    notif.put("read", false);
-
-                    db.collection("notifications").add(notif);
-                }
-
-            } catch (InterruptedException | ExecutionException ex) {
-                ex.printStackTrace();
-            }
-        });
+        // Delegate to central notifier on bgExecutor
+        bgExecutor.submit(() -> MissedDoseNotifier.notifyCaretakersAboutMissedDoses(list, elderId));
     }
 
-    /* ===========================
-       Load & schedule timer
-       =========================== */
 
     private void loadTodayItemsAndStartTimer(DocumentReference todayRef) {
+        // This method runs on scheduleExecutor context if called from ensureTodayScheduleAndProcess,
+        // otherwise it posts a small background task to fetch and update UI.
         bgExecutor.submit(() -> {
             try {
                 QuerySnapshot itemsSnap = todayRef.collection("items").get().get();
@@ -1025,10 +1025,6 @@ public class ElderDashboardController {
         countdownAnim.start();
     }
 
-    /* ===========================
-       Timer tick and UI update
-       =========================== */
-
     private void updateTimerUI() {
         Mode mode;
         List<ScheduleItem> dueItems;
@@ -1094,7 +1090,8 @@ public class ElderDashboardController {
                     stopAlarmIfNeeded();
 
                     List<ScheduleItem> toMark = new ArrayList<>(dueItems);
-                    bgExecutor.submit(() -> {
+                    // Use scheduleExecutor to mark items serially and avoid races
+                    scheduleExecutor.submit(() -> {
                         Firestore db = FirestoreService.getFirestore();
                         List<ScheduleItem> newlyMarked = new ArrayList<>();
                         for (ScheduleItem s : toMark) {
@@ -1102,8 +1099,8 @@ public class ElderDashboardController {
                                 DocumentSnapshot snap = s.docRef.get().get();
                                 String st = snap.contains("status") ? snap.getString("status") : null;
                                 if (st != null && ("taken".equals(st) || "missed".equals(st))) continue;
-                                markItemMissedAndLog(s.docRef, s, db);
-                                newlyMarked.add(s);
+                                boolean marked = markItemMissedAndLog(s.docRef, s, db);
+                                if (marked) newlyMarked.add(s);
                             } catch (InterruptedException | ExecutionException ignore) {}
                         }
 
@@ -1145,10 +1142,6 @@ public class ElderDashboardController {
                 return;
         }
     }
-
-    /* ===========================
-       User actions
-       =========================== */
 
     @javafx.fxml.FXML
     private void handleConfirmIntake() {
@@ -1334,23 +1327,13 @@ public class ElderDashboardController {
         } catch (IOException e) { e.printStackTrace(); }
     }
 
-    private void performAutoSOS(String reason) {
-        Platform.runLater(() -> {
-            handleHelpRequest();
-            Alert a = new Alert(Alert.AlertType.WARNING, "Auto SOS triggered: " + reason, ButtonType.OK);
-            a.setHeaderText("Emergency: Unconfirmed medicines");
-            a.show();
-        });
-    }
-
-
     @javafx.fxml.FXML
     private void handleShowPairingCode() {
         if (pairingCode == null || pairingCode.isEmpty()) {
             if (copyToastLabel != null) {
                 copyToastLabel.setText("Pairing unavailable");
                 copyToastLabel.setVisible(true);
-                // removed visual delay: hide immediately
+
                 copyToastLabel.setVisible(false);
             }
             return;
@@ -1364,14 +1347,10 @@ public class ElderDashboardController {
         if (copyToastLabel != null) {
             copyToastLabel.setText("Pairing code copied");
             copyToastLabel.setVisible(true);
-            // removed visual delay: hide immediately
             copyToastLabel.setVisible(false);
         }
     }
 
-    /* ===========================
-       UI helpers & placeholder cards
-       =========================== */
 
     private void updateMedsUI() {
         if (medsListBox == null) return;
@@ -1391,8 +1370,6 @@ public class ElderDashboardController {
         } else {
             if (upcomingTitleLabel != null) upcomingTitleLabel.setText("Upcoming Medicines");
         }
-
-        // If there are no items at all, show a center message rather than placeholders
         if (items == null || items.isEmpty()) {
             medsListBox.setAlignment(Pos.CENTER);
             Label noMoreLbl = new Label("No more medicines scheduled for today");
@@ -1417,7 +1394,6 @@ public class ElderDashboardController {
             return;
         }
 
-        // We have items to show — make sure alignment returns to top-left
         medsListBox.setAlignment(Pos.TOP_LEFT);
 
         for (ScheduleItem s : show) {
@@ -1444,13 +1420,6 @@ public class ElderDashboardController {
             card.getChildren().addAll(meta, spacer, timeLbl);
             medsListBox.getChildren().add(card);
         }
-    }
-
-    private javafx.scene.layout.Region createPlaceholderRegion(double height) {
-        javafx.scene.layout.Region r = new javafx.scene.layout.Region();
-        r.setPrefHeight(height);
-        r.setStyle("-fx-background-color: white; -fx-background-radius:8; -fx-border-color:#e6e9ef; -fx-border-radius:8; -fx-padding:6;");
-        return r;
     }
 
     private static class ScheduleItem {
@@ -1490,17 +1459,13 @@ public class ElderDashboardController {
         }
     }
 
-    /* ===========================
-       Dispose / cleanup
-       =========================== */
-
     public void dispose() {
         try {
             teardownRealtimeListeners();
             if (bgExecutor != null && !bgExecutor.isShutdown()) bgExecutor.shutdownNow();
+            if (scheduleExecutor != null && !scheduleExecutor.isShutdown()) scheduleExecutor.shutdownNow();
             if (countdownAnim != null) countdownAnim.stop();
             if (rolloverChecker != null) rolloverChecker.stop();
-            // stop and release alarm player if any
             stopAlarmIfNeeded();
         } catch (Exception ex) {
             ex.printStackTrace();

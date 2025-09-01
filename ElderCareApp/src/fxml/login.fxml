@@ -14,7 +14,7 @@
           AnchorPane.leftAnchor="20" AnchorPane.rightAnchor="20"
           styleClass="container">
 
-        <Label text="Login to ElderCareApp" styleClass="title"/>
+        <Label text="Login to BrightImpact" styleClass="title"/>
 
         <!-- Username Label Left-aligned -->
         <HBox maxWidth="300" alignment="CENTER_LEFT">

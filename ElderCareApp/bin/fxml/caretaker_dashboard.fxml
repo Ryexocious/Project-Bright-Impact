@@ -25,7 +25,7 @@
             </padding>
 
             <children>
-                <Label text="🩺 ElderCare" styleClass="brand-title"/>
+                <Label text="🩺 BrightImpact" styleClass="brand-title"/>
 
                 <Region HBox.hgrow="ALWAYS"/>
 

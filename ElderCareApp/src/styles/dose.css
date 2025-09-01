@@ -78,17 +78,6 @@
     -fx-background-color: #64748b;
 }
 
-.back-button {
-    -fx-background-color: linear-gradient(to right, #3b82f6, #6366f1);
-    -fx-text-fill: white;
-    -fx-background-radius: 8;
-    -fx-padding: 10 20;
-    -fx-font-size: 14px;
-}
-
-.back-button:hover {
-    -fx-background-color: linear-gradient(to right, #2563eb, #4f46e5);
-}
 
 /* Center section styling */
 .center-container {
@@ -269,4 +258,10 @@
 .pill-unknown {
     -fx-background-color: #f0f0f0;
     -fx-text-fill: #333;
+}
+.record-table {
+    -fx-max-height: infinity; /* allow it to grow */
+}
+.table-scroll-pane {
+    -fx-max-height: infinity;
 }

@@ -20,6 +20,10 @@ import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.FieldValue;
 import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.ListenerRegistration;
+import com.google.cloud.firestore.QuerySnapshot;
+import com.google.cloud.firestore.EventListener;
+import com.google.cloud.firestore.Query;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import utils.FirestoreService;
@@ -30,6 +34,18 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.Collections;
+
+/**
+ * Caretaker Dashboard controller — updated to fix notification bell / badge handling.
+ *
+ * Key changes:
+ * - single shared, synchronized `currentUnreadDocs` list that's updated on initial load and from realtime listener
+ * - bell action uses a snapshot copy of currentUnreadDocs at click time, and marking read updates UI immediately
+ * - seenNotificationIds still prevents popup for historic notifications on initial load
+ */
 public class CaretakerDashboardController {
 
     @FXML private Label caretakerNameLabel;
@@ -54,6 +70,14 @@ public class CaretakerDashboardController {
     @FXML private Button notificationBell;
     @FXML private Label notificationCount;
 
+    // snapshot listener handle for notifications
+    private ListenerRegistration notificationsListener = null;
+    // track which notification document IDs we've seen so we don't popup on initial load
+    private final Set<String> seenNotificationIds = new HashSet<>();
+
+    // CURRENT unread docs (kept up-to-date). Access guarded by notifLock.
+    private final Object notifLock = new Object();
+    private List<DocumentSnapshot> currentUnreadDocs = new ArrayList<>();
 
     // sample stats data
     private int todayDoses = 5;
@@ -67,11 +91,13 @@ public class CaretakerDashboardController {
         // Start loading caretaker name (will update UI when ready)
         loadCaretakerNameFromSession();
 
-        notificationCount.setVisible(false);
-        notificationCount.setText("");
+        // defensive UI init
+        if (notificationCount != null) {
+            notificationCount.setVisible(false);
+            notificationCount.setText("");
+        }
+
         loadNotifications();
-
-
     }
 
     private void loadCaretakerNameFromSession() {
@@ -106,7 +132,8 @@ public class CaretakerDashboardController {
 
                 Platform.runLater(() -> initializeCaretaker(finalName));
             } catch (Exception e) {
-                final String fallback = uid.length() > 8 ? uid.substring(0, 8) : uid;
+                final String fallback = SessionManager.getCurrentUserId() == null ? "" :
+                        (SessionManager.getCurrentUserId().length() > 8 ? SessionManager.getCurrentUserId().substring(0, 8) : SessionManager.getCurrentUserId());
                 Platform.runLater(() -> initializeCaretaker(fallback));
             }
         }).start();
@@ -141,6 +168,9 @@ public class CaretakerDashboardController {
                 || adherenceIndicator != null || adherencePercentLabel != null || nextDoseLabel != null) {
             refreshStats();
         }
+
+        // Attach realtime notifications listener after caretaker name is loaded/initialized
+        attachNotificationsListener();
     }
 
     /* ---------- Stats (defensive: null-checks) ---------- */
@@ -188,10 +218,6 @@ public class CaretakerDashboardController {
             contentPane.getChildren().add(node);
 
             // After loading content, try refreshing stats again (if controls are now present)
-            // This is defensive: either the controls are part of this controller's FXML or a child controller.
-            // If they are part of this controller's FXML and were injected lazily, this helps update them.
-            // If stats controls belong to the child controller, consider exposing an API on that child controller
-            // and calling it here (loader.getController()) — optional improvement.
             refreshStats();
         } catch (IOException e) {
             showError("Could not load screen: " + fxmlPath + "\n" + e.getMessage());
@@ -277,72 +303,246 @@ public class CaretakerDashboardController {
         a.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
         a.showAndWait();
     }
+
+    /**
+     * Load notifications once and also attach a real-time listener so caretakers get new notifications immediately.
+     */
     private void loadNotifications() {
         String caretakerId = SessionManager.getCurrentUserId();
         if (caretakerId == null) return;
 
+        // load current unread notifications once (initial)
         new Thread(() -> {
             try {
                 Firestore db = FirestoreService.getFirestore();
                 var snap = db.collection("notifications")
                         .whereEqualTo("caretakerId", caretakerId)
                         .whereEqualTo("read", false)
+                        .orderBy("timestamp")
                         .get()
                         .get();
 
-                List<QueryDocumentSnapshot> docs = snap.getDocuments(); // Use QueryDocumentSnapshot
+                List<QueryDocumentSnapshot> docs = snap.getDocuments();
                 List<String> messages = new ArrayList<>();
-                for (QueryDocumentSnapshot doc : docs) {
-                    messages.add(doc.getString("message"));
+                synchronized (notifLock) {
+                    currentUnreadDocs.clear();
+                    for (QueryDocumentSnapshot doc : docs) {
+                        messages.add(doc.getString("message"));
+                        currentUnreadDocs.add(doc);
+                        // Mark these as seen so we don't popup on initial load
+                        seenNotificationIds.add(doc.getId());
+                    }
                 }
 
+                // show the initial bell UI state and set bell action
                 Platform.runLater(() -> showNotifications(messages, docs));
-
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }).start();
     }
 
+    /**
+     * Attach a Firestore snapshot listener to notifications for the current caretaker so the UI shows new
+     * unread notifications immediately (no re-login required).
+     */
+    private void attachNotificationsListener() {
+        String caretakerId = SessionManager.getCurrentUserId();
+        if (caretakerId == null) return;
+
+        // detach old listener if present
+        try {
+            if (notificationsListener != null) {
+                notificationsListener.remove();
+                notificationsListener = null;
+            }
+        } catch (Exception ignored) {}
+
+        Firestore db = FirestoreService.getFirestore();
+        Query q = db.collection("notifications")
+                .whereEqualTo("caretakerId", caretakerId)
+                .whereEqualTo("read", false)
+                .orderBy("timestamp", Query.Direction.ASCENDING);
+
+        // Attach a realtime listener
+        notificationsListener = q.addSnapshotListener((snap, err) -> {
+            if (err != null) {
+                System.err.println("Notifications listener error: " + err.getMessage());
+                return;
+            }
+            if (snap == null) return;
+
+            List<String> messages = new ArrayList<>();
+            List<DocumentSnapshot> docs = new ArrayList<>();
+
+            for (DocumentSnapshot d : snap.getDocuments()) {
+                docs.add(d);
+                String msg = d.getString("message");
+                if (msg != null) messages.add(msg);
+            }
+
+            // Update shared current unread docs atomically
+            synchronized (notifLock) {
+                currentUnreadDocs.clear();
+                currentUnreadDocs.addAll(docs);
+            }
+
+            // Update badge UI
+            Platform.runLater(() -> {
+                if (messages.isEmpty()) {
+                    if (notificationCount != null) {
+                        notificationCount.setVisible(false);
+                        notificationCount.setText("");
+                    }
+                } else {
+                    if (notificationCount != null) {
+                        notificationCount.setVisible(true);
+                        notificationCount.setText(String.valueOf(messages.size()));
+                    }
+                }
+            });
+
+            // Determine which docs are newly added (not seen before); show alert for them only
+            List<String> newly = new ArrayList<>();
+            List<DocumentSnapshot> newlyDocs = new ArrayList<>();
+            for (DocumentSnapshot d : docs) {
+                if (!seenNotificationIds.contains(d.getId())) {
+                    String m = d.getString("message");
+                    if (m != null) newly.add(m);
+                    newlyDocs.add(d);
+                    seenNotificationIds.add(d.getId());
+                }
+            }
+
+            if (!newly.isEmpty()) {
+                Platform.runLater(() -> {
+                    // show grouped alert for new notifications
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION, String.join("\n\n", newly));
+                    alert.setHeaderText("New notifications");
+                    alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
+                    alert.showAndWait();
+
+                    // After user dismisses popup for newly arrived notifications, mark those newlyDocs as read?
+                    // NOTE: we do NOT auto-mark them here — original behavior was to just popup.
+                    // If desired, you can mark them here; current behavior keeps them unread until bell is pressed.
+                });
+            }
+
+            // Always (re)set the bell action using the current unread docs (so bell is always up-to-date)
+            Platform.runLater(() -> installBellAction());
+        });
+    }
+
+    /**
+     * Show notifications UI based on a one-time list (used by initial load).
+     * It also installs the bell click action to use current unread docs at click-time.
+     */
     private void showNotifications(List<String> messages, List<? extends DocumentSnapshot> docs) {
+        // Update badge
         Platform.runLater(() -> {
-            if (messages.isEmpty()) {
-                notificationCount.setVisible(false); // hide badge
-                notificationCount.setText("");
+            if (messages == null || messages.isEmpty()) {
+                if (notificationCount != null) {
+                    notificationCount.setVisible(false);
+                    notificationCount.setText("");
+                }
             } else {
-                notificationCount.setVisible(true);  // show badge
-                notificationCount.setText(String.valueOf(messages.size()));
+                if (notificationCount != null) {
+                    notificationCount.setVisible(true);
+                    notificationCount.setText(String.valueOf(messages.size()));
+                }
             }
         });
 
-        // Set the bell action
+        // Ensure bell has an up-to-date action
+        Platform.runLater(() -> installBellAction());
+    }
+
+    /**
+     * Install/refresh the notification bell click handler. The handler captures a *snapshot copy*
+     * of the current unread docs at the moment of click and then marks those as read.
+     */
+    private void installBellAction() {
+        if (notificationBell == null) return;
+
         notificationBell.setOnAction(evt -> {
-            if (messages.isEmpty()) return; // nothing to show
+            List<DocumentSnapshot> docsSnapshot;
+            synchronized (notifLock) {
+                docsSnapshot = new ArrayList<>(currentUnreadDocs);
+            }
+
+            if (docsSnapshot.isEmpty()) {
+                // nothing to show
+                return;
+            }
+
+            List<String> messages = new ArrayList<>();
+            for (DocumentSnapshot d : docsSnapshot) {
+                String m = d.getString("message");
+                if (m != null) messages.add(m);
+            }
 
             Alert alert = new Alert(Alert.AlertType.INFORMATION, String.join("\n\n", messages));
             alert.setHeaderText("Notifications");
             alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
             alert.showAndWait();
 
-            // After viewing, mark as read
-            markAsRead(docs);
-
-            // Hide the badge after marking read
-            Platform.runLater(() -> {
-                notificationCount.setVisible(false);
-                notificationCount.setText("");
-            });
+            // After viewing, mark those snapshot docs as read (firestore updates) and immediately update UI.
+            markAsReadAndClear(docsSnapshot);
         });
     }
 
+    /**
+     * Mark the provided docs as read (in Firestore), clear them from currentUnreadDocs, and update the badge immediately.
+     * This waits for each update to complete (best-effort).
+     */
+    private void markAsReadAndClear(List<DocumentSnapshot> docsToMark) {
+        if (docsToMark == null || docsToMark.isEmpty()) return;
 
-    private void markAsRead(List<? extends DocumentSnapshot> docs) {
-        for (DocumentSnapshot doc : docs) {
-            try {
-                doc.getReference().update("read", true).get();
-            } catch (Exception e) {
-                e.printStackTrace();
+        new Thread(() -> {
+            Firestore db = FirestoreService.getFirestore();
+            boolean anySuccess = false;
+
+            for (DocumentSnapshot doc : docsToMark) {
+                try {
+                    doc.getReference().update("read", true).get();
+                    anySuccess = true;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
-        }
+
+            // Remove marked ids from currentUnreadDocs and update badge immediately on FX thread.
+            synchronized (notifLock) {
+                // Remove docs whose id matches docsToMark
+                Set<String> idsToRemove = new HashSet<>();
+                for (DocumentSnapshot d : docsToMark) idsToRemove.add(d.getId());
+
+                List<DocumentSnapshot> newList = new ArrayList<>();
+                for (DocumentSnapshot d : currentUnreadDocs) {
+                    if (!idsToRemove.contains(d.getId())) newList.add(d);
+                }
+                currentUnreadDocs = newList;
+            }
+
+            Platform.runLater(() -> {
+                int remaining;
+                synchronized (notifLock) {
+                    remaining = currentUnreadDocs.size();
+                }
+                if (remaining <= 0) {
+                    if (notificationCount != null) {
+                        notificationCount.setVisible(false);
+                        notificationCount.setText("");
+                    }
+                } else {
+                    if (notificationCount != null) {
+                        notificationCount.setVisible(true);
+                        notificationCount.setText(String.valueOf(remaining));
+                    }
+                }
+                // re-install bell action to ensure it uses latest docs next time
+                installBellAction();
+            });
+        }).start();
     }
 }

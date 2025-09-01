@@ -34,7 +34,6 @@
 			    <Button fx:id="searchBtn" text="Search" styleClass="button search-button" minWidth="80" />
 			    <Button fx:id="clearBtn" text="Clear" styleClass="button clear-button" minWidth="80" />
 			</HBox>
-            <Label fx:id="hintLabel" text="Tip: leave date range empty to search last 7 days" styleClass="hint-label" />
         </VBox>
     </top>
 
@@ -61,12 +60,5 @@
         </VBox>
     </center>
 
-    <!-- Bottom-right: Back button -->
-    <bottom>
-        <HBox alignment="CENTER_RIGHT" styleClass="bottom-container">
-            <Region HBox.hgrow="ALWAYS"/>
-            <Button fx:id="backBtn" text="Back to Dashboard" styleClass="button back-button" />
-        </HBox>
-    </bottom>
 
 </BorderPane>
