@@ -1,15 +1,14 @@
+/* General Label */
 .label {
     -fx-font-family: "Arial";
 }
+
+/* Base Button Style */
 .button {
-    -fx-background-color: #4CAF50;
-    -fx-text-fill: white;
     -fx-font-weight: bold;
+    -fx-text-fill: white;
 }
 
-.text-field, .password-field {
-    -fx-pref-width: 200px;
-}
 /* Container styling */
 .container {
     -fx-padding: 30;
@@ -30,33 +29,34 @@
     -fx-padding: 10 0 20 0;
 }
 
-/* Buttons */
-.btn-primary {
-    -fx-background-color: #007bff;
+/* Shared button base (for consistent sizing & hover animation) */
+.btn-primary, .btn-secondary {
     -fx-text-fill: white;
     -fx-font-weight: bold;
     -fx-background-radius: 8;
     -fx-padding: 10 20;
     -fx-cursor: hand;
     -fx-transition: background-color 0.3s ease-in-out;
+    -fx-min-width: 200;
+    -fx-alignment: center;
+}
+
+/* Primary: Blue (Login) */
+.btn-primary {
+    -fx-background-color: #007bff;
 }
 
 .btn-primary:hover {
     -fx-background-color: #0056b3;
 }
 
+/* Secondary: Green (Registration) */
 .btn-secondary {
-    -fx-background-color: #6c757d;
-    -fx-text-fill: white;
-    -fx-font-weight: bold;
-    -fx-background-radius: 8;
-    -fx-padding: 10 20;
-    -fx-cursor: hand;
-    -fx-transition: background-color 0.3s ease-in-out;
+    -fx-background-color: #28a745; /* Green */
 }
 
 .btn-secondary:hover {
-    -fx-background-color: #5a6268;
+    -fx-background-color: #1e7e34; /* Darker Green */
 }
 
 /* Input controls: TextField, PasswordField, ComboBox */
