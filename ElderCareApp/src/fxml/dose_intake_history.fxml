@@ -15,7 +15,7 @@
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
 
-<BorderPane xmlns="http://javafx.com/javafx/23.0.1"
+<BorderPane fx:id="rootPane" xmlns="http://javafx.com/javafx/23.0.1"
             xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="controller.DoseIntakeHistoryController"
             stylesheets="@../styles/dose.css"
@@ -25,15 +25,40 @@
     <top>
         <VBox spacing="10" styleClass="top-container">
             <Label text="Dose Intake History" styleClass="title-label" />
-			<HBox spacing="10" alignment="CENTER_LEFT" styleClass="filter-container">
-			    <TextField fx:id="nameFilterField" promptText="Search by medicine name..." styleClass="filter-field" HBox.hgrow="ALWAYS" prefWidth="180" />
-			    <ComboBox fx:id="typeFilterCombo" prefWidth="120" promptText="Type (any)" styleClass="filter-combo"/>
-			    <ComboBox fx:id="statusFilterCombo" prefWidth="120" promptText="Status (any)" styleClass="filter-combo"/>
-			    <DatePicker fx:id="fromDatePicker" promptText="From" prefWidth="120" styleClass="filter-date-picker" />
-			    <DatePicker fx:id="toDatePicker" promptText="To" prefWidth="120" styleClass="filter-date-picker" />
-			    <Button fx:id="searchBtn" text="Search" styleClass="button search-button" minWidth="80" />
-			    <Button fx:id="clearBtn" text="Clear" styleClass="button clear-button" minWidth="80" />
-			</HBox>
+
+            <!-- Filter row(s) with transparent background -->
+            <VBox spacing="8" styleClass="filter-bar">
+                <padding>
+                    <Insets top="0" right="0" bottom="0" left="0"/>
+                </padding>
+
+                <!-- First row: main inputs (reduced search width to expose other fields) -->
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <TextField fx:id="nameFilterField"
+                               promptText="Search by medicine name..."
+                               styleClass="filter-field"
+                               HBox.hgrow="NEVER"
+                               prefWidth="280" />
+
+                    <ComboBox fx:id="typeFilterCombo" prefWidth="160" promptText="Type" styleClass="filter-combo"/>
+                    <ComboBox fx:id="statusFilterCombo" prefWidth="160" promptText="Status" styleClass="filter-combo"/>
+
+                    <!-- Date range -->
+                    <DatePicker fx:id="fromDatePicker" promptText="From" prefWidth="130" styleClass="filter-date-picker" />
+                    <DatePicker fx:id="toDatePicker" promptText="To" prefWidth="130" styleClass="filter-date-picker" />
+
+                    <!-- optional spacer if you want first row to push tight -->
+                    <Region HBox.hgrow="ALWAYS" />
+                </HBox>
+
+                <!-- Second row: actions (right aligned), smaller blue buttons -->
+                <HBox spacing="8" alignment="CENTER_RIGHT">
+                    <Region HBox.hgrow="ALWAYS" />
+                    <Button fx:id="searchBtn" text="Search" styleClass="button small-action search-button" minWidth="80" />
+                    <Button fx:id="clearBtn" text="Clear" styleClass="button small-action clear-button outline" minWidth="70" />
+                </HBox>
+            </VBox>
+
         </VBox>
     </top>
 
@@ -59,6 +84,5 @@
             <Label fx:id="noRecordsLabel" text="No records found" visible="false" styleClass="no-records-label" />
         </VBox>
     </center>
-
 
 </BorderPane>

@@ -36,7 +36,8 @@
 
         <Button text="Login" styleClass="btn-primary" maxWidth="200" onAction="#handleLogin"/>
 
-        <Button text="Go to Registration" maxWidth="200" onAction="#handleRegistration"/>
+        <Button text="Go to Registration" styleClass="btn-secondary" maxWidth="200" onAction="#handleRegistration"/>
+
 
     </VBox>
 </AnchorPane>

@@ -64,10 +64,32 @@
     -fx-border-color: transparent;
 }
 
-/* ghost signout */
+/* Keep original ghost look, but add hover -> red */
 .ghost-btn {
-    -fx-background-color: transparent; -fx-border-color: #e6eef9; -fx-border-radius: 10; -fx-text-fill: #5b6b8c;
+    -fx-background-color: transparent;
+    -fx-border-color: #e6eef9;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-text-fill: #5b6b8c;
+    -fx-font-weight: 600;
+    -fx-padding: 10 12 10 12;
+    -fx-cursor: hand;
 }
+
+/* On hover: red background, white text, red border */
+.ghost-btn:hover {
+    -fx-background-color: #e74c3c;    /* red */
+    -fx-border-color: #e74c3c;
+    -fx-text-fill: white;
+}
+
+/* Optional: keyboard focus style to match hover */
+.ghost-btn:focused {
+    -fx-background-color: #e74c3c;
+    -fx-border-color: #e74c3c;
+    -fx-text-fill: white;
+}
+
 
 /* main content area */
 .main-content { -fx-background-color: transparent; }

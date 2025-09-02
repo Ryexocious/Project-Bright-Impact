@@ -17,10 +17,8 @@ public class FirestoreService {
     public static Firestore getFirestore() {
         if (db == null) {
             try {
-                // Use relative path to avoid hardcoding machine-specific paths
                 String relativePath = "data/firebase/eldercareapp-3e451-firebase-adminsdk-fbsvc-22d600c784.json";
                 File file = new File(relativePath);
-                System.out.println("Using Firebase credentials from: " + file.getAbsolutePath());
 
                 FileInputStream serviceAccount = new FileInputStream(file);
 
