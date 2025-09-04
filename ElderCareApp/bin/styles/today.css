@@ -1,0 +1,145 @@
+/* Main background */
+.root {
+    -fx-background-color: linear-gradient(to bottom, #f5f7fb 0%, #e4eaf5 100%);
+}
+
+/* Top bar styling */
+.top-bar {
+    -fx-padding: 16 20;
+    -fx-background-color: linear-gradient(to right, #4a6cf7 0%, #6a82eb 100%);
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 8, 0, 0, 2);
+}
+
+.header-label {
+    -fx-font-size: 24px;
+    -fx-font-weight: 800;
+    -fx-text-fill: white;
+    -fx-font-family: 'Segoe UI';
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 0,0,0,1);
+}
+
+/* Scroll pane styling */
+.scroll-pane {
+    -fx-background: transparent;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.schedule-container {
+    -fx-padding: 24;
+    -fx-background-color: transparent;
+}
+
+/* Bottom bar styling */
+.bottom-bar {
+    -fx-padding: 14 20;
+    -fx-background-color: #ffffff;
+    -fx-border-color: #e0e6ef;
+    -fx-border-width: 1 0 0 0;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 0, -3, 0, 0);
+}
+
+.status-label {
+    -fx-font-size: 14px;
+    -fx-font-weight: 500;
+    -fx-text-fill: #4a5568;
+    -fx-font-family: 'Segoe UI';
+}
+
+/* Back button styling */
+.back-button {
+    -fx-background-color: linear-gradient(to bottom, #4a6cf7 0%, #3b5bdb 100%);
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-font-weight: 700;
+    -fx-background-radius: 8;
+    -fx-padding: 10 24;
+    -fx-font-family: 'Segoe UI';
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(74, 108, 247, 0.4), 8, 0, 0, 2);
+}
+
+.back-button:hover {
+    -fx-background-color: linear-gradient(to bottom, #5a7cff 0%, #4a6cf7 100%);
+}
+
+.back-button:pressed {
+    -fx-background-color: linear-gradient(to bottom, #3a56d0 0%, #2a46c0 100%);
+    -fx-translate-y: 1px;
+}
+
+/* ===== AUTOMATIC STYLING FOR DYNAMIC CONTENT ===== */
+
+/* Style all Labels inside the schedule container (for medicine names) */
+#scheduleContainer .label {
+    -fx-font-size: 14px;
+    -fx-text-fill: #374151;
+    -fx-font-family: 'Segoe UI';
+    -fx-wrap-text: true;
+}
+
+/* Style HBox elements (assuming medicine cards are HBox) */
+#scheduleContainer > HBox {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-padding: 16;
+    -fx-spacing: 12;
+    -fx-alignment: CENTER_LEFT;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 2);
+    -fx-border-radius: 12;
+    -fx-border-color: #e5e7eb;
+    -fx-border-width: 1;
+}
+
+#scheduleContainer > HBox:hover {
+    -fx-effect: dropshadow(gaussian, rgba(74, 108, 247, 0.2), 12, 0, 0, 3);
+}
+
+/* Style VBox elements (if medicine cards are VBox) */
+#scheduleContainer > VBox {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-padding: 16;
+    -fx-spacing: 8;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 2);
+    -fx-border-radius: 12;
+    -fx-border-color: #e5e7eb;
+    -fx-border-width: 1;
+}
+
+#scheduleContainer > VBox:hover {
+    -fx-effect: dropshadow(gaussian, rgba(74, 108, 247, 0.2), 12, 0, 0, 3);
+}
+
+/* Style time labels (assuming they might have specific classes or patterns) */
+#scheduleContainer .label:first-child {
+    -fx-font-size: 18px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #1f2937;
+    -fx-min-width: 80px;
+}
+
+/* Style buttons in schedule container */
+#scheduleContainer .button {
+    -fx-background-color: linear-gradient(to bottom, #8b5cf6 0%, #7c3aed 100%);
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-font-weight: 600;
+    -fx-background-radius: 8;
+    -fx-padding: 10 20;
+    -fx-font-family: 'Segoe UI';
+    -fx-cursor: hand;
+}
+
+#scheduleContainer .button:hover {
+    -fx-background-color: linear-gradient(to bottom, #9c79ff 0%, #8b5cf6 100%);
+}
+
+/* Style for date headers (larger text) */
+#scheduleContainer > .label {
+    -fx-font-size: 22px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #1f2937;
+    -fx-font-family: 'Segoe UI';
+    -fx-padding: 0 0 16 0;
+}

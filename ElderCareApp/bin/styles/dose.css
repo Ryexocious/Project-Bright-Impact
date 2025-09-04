@@ -1,0 +1,226 @@
+/* dose.css - full stylesheet with transparent filter bar and balanced widths */
+
+/* Main container */
+.main-container {
+    -fx-background-color: #f8fafc;
+    -fx-font-family: 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Top section styling */
+.top-container {
+    -fx-padding: 20px;
+    -fx-background-color: linear-gradient(to right, #3b82f6, #6366f1);
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.1), 10, 0, 0, 3);
+}
+
+.title-label {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+/* =========================
+   Filter bar styling
+   ========================= */
+/* Make the background transparent and remove card effects */
+.filter-bar {
+    -fx-background-color: transparent;     /* no white block behind filters */
+    -fx-background-radius: 0;
+    -fx-border-radius: 0;
+    -fx-padding: 8;
+    -fx-effect: null;
+    -fx-alignment: CENTER_LEFT;
+}
+
+/* Shared control base - increased height and padding; width set in FXML */
+.filter-field, .filter-combo, .filter-date-picker {
+    -fx-pref-height: 44px;
+    -fx-min-height: 40px;
+    -fx-font-size: 14px;
+    -fx-background-color: white;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-border-color: rgba(16,24,40,0.04);
+    -fx-padding: 0 12 0 12;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.03), 6, 0, 0, 2);
+}
+
+/* TextField specifics */
+.filter-field {
+    -fx-prompt-text-fill: #94a3b8;
+}
+
+/* ComboBoxes and DatePickers cursors */
+.filter-combo, .filter-date-picker {
+    -fx-cursor: hand;
+}
+
+/* Focus styles for accessibility */
+.filter-field:focused, .filter-combo:focused, .filter-date-picker:focused {
+    -fx-border-color: rgba(79,70,229,0.9);
+    -fx-effect: dropshadow(gaussian, rgba(99,102,241,0.12), 8, 0, 0, 4);
+}
+
+/* Ensure prompt text remains readable */
+.filter-field .text, .filter-date-picker .text {
+    -fx-fill: #64748b;
+}
+
+/* Buttons */
+.button {
+    -fx-background-radius: 8;
+    -fx-padding: 8 14;
+    -fx-font-weight: 700;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.06), 6, 0, 0, 2);
+    -fx-transition: all 0.14s;
+    -fx-font-size: 13px;
+}
+
+/* small-action: for compact buttons on second row */
+.small-action {
+    -fx-pref-height: 32px;
+    -fx-min-height: 32px;
+    -fx-font-size: 12px;
+    -fx-padding: 6 10;
+    -fx-font-weight: 700;
+}
+
+/* Search button: smaller solid blue */
+.search-button {
+    -fx-background-color: linear-gradient(to right, #1976d2, #1e88e5);
+    -fx-text-fill: white;
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
+    -fx-background-radius: 8;
+}
+.search-button:hover {
+    -fx-background-color: linear-gradient(to right, #1669c0, #1976d2);
+    -fx-scale-x: 1.02;
+    -fx-scale-y: 1.02;
+}
+
+/* Clear button: small outline blue */
+.clear-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #1e3a8a;
+    -fx-border-color: rgba(30, 58, 138, 0.22);
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+}
+.clear-button.outline:hover {
+    -fx-background-color: rgba(30, 58, 138, 0.06);
+    -fx-text-fill: #0b3a8a;
+}
+
+/* Keep older button hover behaviour if present */
+.button:hover {
+    -fx-scale-x: 1.02;
+    -fx-scale-y: 1.02;
+}
+
+/* Center section styling */
+.center-container {
+    -fx-padding: 0 16 8 16;
+}
+
+.table-scroll-pane {
+    -fx-background-color: transparent;
+}
+
+.record-table {
+    -fx-background-color: white;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-border-color: #e2e8f0;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.08), 12, 0, 0, 4);
+}
+
+.record-table .column-header-background {
+    -fx-background-color: linear-gradient(to bottom, #f1f5f9, #e2e8f0);
+    -fx-background-radius: 8 8 0 0;
+    -fx-border-radius: 8 8 0 0;
+    -fx-padding: 0 0 5px 0;
+}
+
+.record-table .column-header {
+    -fx-background-color: transparent;
+    -fx-padding: 10px;
+    -fx-border-width: 0 0 1px 0;
+    -fx-border-color: #cbd5e1;
+}
+
+.record-table .column-header .label {
+    -fx-text-fill: #475569;
+    -fx-font-weight: bold;
+    -fx-alignment: CENTER_LEFT;
+}
+
+.record-table .table-row-cell {
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 1px 0;
+    -fx-background-color: white;
+    -fx-table-cell-border-color: #f1f5f9;
+    -fx-padding: 8px;
+}
+
+.record-table .table-row-cell:odd { -fx-background-color: #f8fafc; }
+.record-table .table-row-cell:selected { -fx-background-color: #dbeafe; }
+.record-table .table-row-cell:hover { -fx-background-color: #eff6ff; }
+
+.record-table .table-cell {
+    -fx-padding: 8px;
+    -fx-border-color: transparent;
+    -fx-alignment: CENTER_LEFT;
+    -fx-text-fill: #334155;
+}
+
+/* Scroll bar styling */
+.scroll-bar:horizontal, .scroll-bar:vertical { -fx-background-color: transparent; }
+.scroll-bar:horizontal .track, .scroll-bar:vertical .track {
+    -fx-background-color: transparent; -fx-border-color: transparent;
+}
+.scroll-bar:horizontal .thumb, .scroll-bar:vertical .thumb {
+    -fx-background-color: #cbd5e1; -fx-background-radius: 5;
+}
+.scroll-bar:horizontal .thumb:hover, .scroll-bar:vertical .thumb:hover { -fx-background-color: #94a3b8; }
+
+/* No records label */
+.no-records-label {
+    -fx-font-size: 16px;
+    -fx-text-fill: #64748b;
+    -fx-alignment: center;
+    -fx-padding: 40px;
+}
+
+/* Date picker styling */
+.date-picker { -fx-background-radius: 6; }
+.date-picker .text-field { -fx-background-color: white; -fx-background-radius: 6; }
+
+/* ComboBox styling */
+.combo-box { -fx-background-color: white; -fx-mark-color: #3b82f6; }
+.combo-box .list-view {
+    -fx-background-color: white; -fx-background-radius: 6;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.1), 8, 0, 0, 3);
+}
+.combo-box .list-cell { -fx-padding: 8px; }
+.combo-box .list-cell:filled:selected { -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; }
+.combo-box .list-cell:filled:hover { -fx-background-color: #eff6ff; }
+
+/* Pill status styles */
+.pill-container { -fx-alignment: center-left; }
+.pill { -fx-padding: 4 10 4 10; -fx-background-radius: 12; -fx-font-size: 12px; -fx-font-weight: bold; }
+.pill-taken { -fx-background-color: #e6f6ea; -fx-text-fill: #12711b; }
+.pill-missed { -fx-background-color: #fdecea; -fx-text-fill: #9c1c0d; }
+.pill-notyet { -fx-background-color: #fff7df; -fx-text-fill: #8a6d00; }
+.pill-snooze { -fx-background-color: #e6f2ff; -fx-text-fill: #1759a6; }
+.pill-unknown { -fx-background-color: #f0f0f0; -fx-text-fill: #333; }
+
+.record-table { -fx-max-height: infinity; }
+.table-scroll-pane { -fx-max-height: infinity; }
+
+/* Responsive rules for JavaFX: when root gains 'compact' class */
+.compact .filter-bar { -fx-padding: 6; -fx-spacing: 6; }
+.compact .filter-field { -fx-pref-width: 180; }
+.compact .filter-combo { -fx-pref-width: 120; }
+.compact .filter-date-picker { -fx-pref-width: 110; }

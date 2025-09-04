@@ -1,4 +1,4 @@
-/* elderdash.css - cleaned/minimal for current FXML */
+/* elderdash.css - cleaned/minimal for current FXML (with hover / pressed effects) */
 
 /* Main Container */
 .main-container {
@@ -81,6 +81,7 @@
     -fx-padding: 6 10 6 10;
     -fx-font-weight: bold;
     -fx-font-size: 13px;
+    -fx-cursor: hand;
 }
 
 /* small transient toast under the pairing button */
@@ -91,7 +92,7 @@
     -fx-opacity: 0.95;
 }
 
-/* Emergency button */
+/* Emergency button - base */
 .emergency-button-compact {
     -fx-background-color: #dc3545;
     -fx-text-fill: white;
@@ -101,6 +102,23 @@
     -fx-effect: dropshadow(gaussian, rgba(220,53,69,0.30), 10, 0, 0, 3);
     -fx-min-width: 200;
     -fx-padding: 12;
+    -fx-cursor: hand; /* show pointer */
+    -fx-translate-y: 0; /* baseline for pressed/hover changes */
+}
+
+/* Hover state (mouse over) */
+.emergency-button-compact:hover {
+    -fx-background-color: #c82333; /* slightly darker */
+    -fx-effect: dropshadow(gaussian, rgba(220,53,69,0.45), 14, 0, 0, 4);
+    -fx-translate-y: -3; /* subtle "lift" */
+}
+
+/* Pressed (mouse click) state */
+.emergency-button-compact:pressed {
+    -fx-background-color: #b21f2d;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 6, 0, 0, 1);
+    -fx-translate-y: 0; /* sink back when pressed */
+    -fx-padding: 11 12 11 12; /* slightly smaller padding while pressed */
 }
 
 /* Bottom logout section */
@@ -113,12 +131,30 @@
     -fx-border-width: 1;
 }
 
+/* Sign Out base */
 .logout-button-compact {
     -fx-background-color: #6c757d;
     -fx-text-fill: white;
     -fx-font-size: 14px;
     -fx-background-radius: 8;
     -fx-padding: 8 20 8 20;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2);
+    -fx-translate-y: 0;
+}
+
+/* Sign Out hover */
+.logout-button-compact:hover {
+    -fx-background-color: #5a6268;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 8, 0, 0, 3);
+    -fx-translate-y: -2;
+}
+
+/* Sign Out pressed */
+.logout-button-compact:pressed {
+    -fx-background-color: #4e555b;
+    -fx-effect: none;
+    -fx-translate-y: 0;
 }
 
 /* Placeholder card styling (used by createPlaceholderRegion) */
