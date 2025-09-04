@@ -39,10 +39,7 @@ A desktop application built with **JavaFX** and **Firebase** to support elders i
 ### Setup  
 
 Clone the repository:  
-`git clone https://github.com/your-username/eldercare-app.git`  
-`cd eldercare-app`  
-
-Add your Firebase credentials (`google-services.json` or Firestore config).  
+`git clone [https://github.com/your-username/eldercare-app.git](https://github.com/Ryexocious/Project-Bright-Impact.git)`   
 
 Add JavaFX VM arguments (update paths as needed):  
 `--module-path /path/to/javafx-sdk/lib --add-modules javafx.controls,javafx.fxml,javafx.media`  
