@@ -1,0 +1,202 @@
+/* medicine.css
+   Modern, clean styling for the medicines FXML
+   Place this file in the same folder as your FXML and reference with stylesheets="@medicine.css"
+*/
+
+/* Root */
+.root-pane {
+    -fx-font-family: "Segoe UI", "System";
+    -fx-background-color: linear-gradient(to bottom, #f7fbff, #ffffff);
+    -fx-padding: 16;
+}
+
+/* Header */
+.header-label {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2b3a4a;
+    -fx-padding: 4 0 6 0;
+}
+
+/* Subheader inside card */
+.subheader-label {
+    -fx-font-size: 16px;
+    -fx-font-weight: 600;
+    -fx-text-fill: #22303b;
+}
+
+/* Edit section card */
+.edit-section {
+    -fx-background-color: white;
+    -fx-background-radius: 10;
+    -fx-border-color: #e6ebf0;
+    -fx-border-radius: 10;
+    -fx-padding: 14;
+    -fx-effect: dropshadow(gaussian, rgba(34,40,49,0.06), 8, 0.0, 0, 2);
+}
+
+/* Generic buttons */
+.button {
+    -fx-cursor: hand;
+    -fx-font-weight: 600;
+    -fx-background-radius: 8;
+    -fx-padding: 8 12;
+    -fx-border-width: 0;
+    -fx-effect: dropshadow(gaussian, rgba(34,40,49,0.04), 4, 0.0, 0, 1);
+}
+
+/* Primary / blue */
+
+/* Success / green */
+.btn.success {
+    -fx-background-color: linear-gradient(#2ecc71, #27ae60);
+    -fx-text-fill: white;
+}
+
+/* Ghost / outline */
+.btn.ghost {
+    -fx-background-color: transparent;
+    -fx-border-color: #d8dde6;
+    -fx-border-width: 1;
+    -fx-text-fill: #34495e;
+}
+
+/* Small unit label next to amount */
+.unit-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: #4b5966;
+    -fx-padding: 4 8;
+    -fx-border-radius: 6;
+}
+
+/* Progress label */
+.progress-label {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #333;
+    -fx-padding: 6 0 0 0;
+}
+
+/* Table */
+.med-table {
+    -fx-background-color: transparent;
+    -fx-padding: 6;
+    -fx-background-radius: 8;
+}
+
+/* Table header background */
+.table-view .column-header-background {
+    -fx-background-color: linear-gradient(#f6f8fb, #eef4fb);
+}
+
+/* Column header text */
+.table-view .column-header, .table-view .column-header .label {
+    -fx-font-weight: 600;
+    -fx-text-fill: #2f3e4d;
+    -fx-alignment: CENTER_LEFT;
+}
+
+/* Row striping */
+.table-row-cell:odd {
+    -fx-background-color: white;
+}
+.table-row-cell:even {
+    -fx-background-color: #fbfdff;
+}
+
+/* Row hover and selection */
+.table-row-cell:hover {
+    -fx-background-color: #eef6ff;
+}
+.table-row-cell:selected {
+    -fx-background-color: #1976d2;
+    -fx-text-fill: white;
+}
+
+/* Cells padding */
+.table-cell {
+    -fx-padding: 8 10;
+}
+
+/* Action column - buttons inside cells: make them compact */
+.table-cell .button {
+    -fx-font-size: 12px;
+    -fx-padding: 6 8;
+    -fx-background-radius: 6;
+}
+
+/* DatePicker/TextField/ComboBox styling (consistent controls) */
+.date-picker, .text-field, .combo-box {
+    -fx-background-radius: 6;
+    -fx-border-color: #e3e8ef;
+    -fx-border-radius: 6;
+    -fx-padding: 6 8 6 8;
+}
+
+/* ListView */
+.times-list {
+    -fx-background-color: white;
+    -fx-border-color: #e6ebf0;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+}
+
+/* Make smaller controls slightly denser */
+.grid-pane .label {
+    -fx-font-size: 13px;
+    -fx-text-fill: #34495e;
+}
+
+/* Make sure disabled-looking elements are subtle */
+.label:disabled, .text-field:disabled {
+    -fx-opacity: 0.75;
+}
+
+/* Customize the back button (by fx:id) if you want */
+#backButton {
+    -fx-min-width: 150px;
+}
+.ongoing-card {
+    -fx-background-color: linear-gradient(to right, #4A6CF7, #5A8BFF); /* blue gradient */
+    -fx-background-radius: 10;
+    -fx-padding: 12;
+    -fx-spacing: 10;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0.0, 0, 2);
+}
+
+.ongoing-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: 700;
+    -fx-text-fill: white;
+    -fx-padding: 4 0 8 0;
+}
+/* keep scrollpane background neutral so the card's background shows */
+.edit-scroll {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+.edit-scroll .viewport {
+    -fx-background-color: transparent;
+}
+
+/* vertical scrollbar styling so it looks like your table's scrollbar */
+.scroll-bar:vertical {
+    -fx-padding: 0 4 0 0;
+    -fx-background-color: transparent;
+}
+.scroll-bar:vertical .thumb {
+    -fx-background-color: rgba(0,0,0,0.18);
+    -fx-background-insets: 2;
+    -fx-background-radius: 6;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 2, 0.0, 0, 1);
+}
+
+/* keep horizontal bar hidden */
+.scroll-bar:horizontal {
+    -fx-opacity: 0;
+    -fx-max-height: 0;
+}
+
+
+/* Small responsive tweak: if the scene becomes narrow, reduce spacing slightly */
+/* Note: JavaFX CSS doesn't have media queries, but you can tune layout in code if needed. */

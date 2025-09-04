@@ -7,6 +7,7 @@
 .button {
     -fx-font-weight: bold;
     -fx-text-fill: white;
+    -fx-cursor: hand;
 }
 
 /* Container styling */
@@ -29,16 +30,16 @@
     -fx-padding: 10 0 20 0;
 }
 
-/* Shared button base (for consistent sizing & hover animation) */
+/* Shared button base (consistent sizing & look) */
 .btn-primary, .btn-secondary {
     -fx-text-fill: white;
     -fx-font-weight: bold;
     -fx-background-radius: 8;
     -fx-padding: 10 20;
-    -fx-cursor: hand;
-    -fx-transition: background-color 0.3s ease-in-out;
     -fx-min-width: 200;
     -fx-alignment: center;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2);
+    -fx-background-insets: 0;
 }
 
 /* Primary: Blue (Login) */
@@ -46,8 +47,19 @@
     -fx-background-color: #007bff;
 }
 
+/* visual on hover */
 .btn-primary:hover {
+    -fx-background-color: #0062d6; /* slightly darker blue */
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 10, 0, 0, 3);
+    -fx-translate-y: -2; /* subtle lift */
+}
+
+/* pressed (mouse click) */
+.btn-primary:pressed {
     -fx-background-color: #0056b3;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.04), 4, 0, 0, 1);
+    -fx-translate-y: 0; /* sink back */
+    -fx-padding: 9 20 9 20; /* slightly smaller padding while pressed */
 }
 
 /* Secondary: Green (Registration) */
@@ -56,7 +68,16 @@
 }
 
 .btn-secondary:hover {
-    -fx-background-color: #1e7e34; /* Darker Green */
+    -fx-background-color: #218838; /* Darker Green */
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 10, 0, 0, 3);
+    -fx-translate-y: -2;
+}
+
+.btn-secondary:pressed {
+    -fx-background-color: #1e7e34;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.04), 4, 0, 0, 1);
+    -fx-translate-y: 0;
+    -fx-padding: 9 20 9 20;
 }
 
 /* Input controls: TextField, PasswordField, ComboBox */
