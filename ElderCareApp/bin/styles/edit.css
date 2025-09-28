@@ -198,5 +198,3 @@
 }
 
 
-/* Small responsive tweak: if the scene becomes narrow, reduce spacing slightly */
-/* Note: JavaFX CSS doesn't have media queries, but you can tune layout in code if needed. */
