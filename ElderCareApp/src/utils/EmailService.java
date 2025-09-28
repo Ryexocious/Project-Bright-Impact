@@ -9,8 +9,8 @@ import java.util.stream.Collectors;
 
 public class EmailService {
 
-    private static final String SENDER_EMAIL = "fahimabrar3166.official@gmail.com";
-    private static final String SENDER_PASSWORD = "zcrkcqcplfodqcnz";  // App password (2FA-enabled)
+    private static final String SENDER_EMAIL = "brightimpactmailservice@gmail.com";
+    private static final String SENDER_PASSWORD = "xarefkgobirukqop";  // App password (2FA-enabled)
 
     public static void sendHelpRequestEmail(String elderName, List<String> caretakerEmails) {
         if (caretakerEmails == null || caretakerEmails.isEmpty()) {
@@ -89,7 +89,7 @@ public class EmailService {
             // Build the body grouped by time (sorted)
             StringBuilder sb = new StringBuilder();
             sb.append("Hello,\n\n");
-            sb.append("This is an automated notification from ElderCareApp.\n\n");
+            sb.append("This is an automated notification from BrightImpact.\n\n");
             sb.append("Elder ").append(elderName).append(" has missed the following scheduled doses:\n\n");
 
             groupedMisses.keySet().stream().sorted().forEach(timeKey -> {
@@ -102,7 +102,7 @@ public class EmailService {
             });
 
             sb.append("Please check and, if required, attend to the elder promptly.\n\n");
-            sb.append("Regards,\nElderCareApp Automated Alerts\n");
+            sb.append("Regards,\nBrightImpact Automated Alerts\n");
 
             message.setText(sb.toString());
             Transport.send(message);
@@ -131,8 +131,8 @@ public class EmailService {
             Message message = new MimeMessage(session);
             message.setFrom(new InternetAddress(SENDER_EMAIL));
             message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(receiverEmail));
-            message.setSubject("ElderCareApp Registration Confirmation");
-            message.setText("Hello " + username + ",\n\nYour registration in ElderCareApp was successful.\n\nThank you!");
+            message.setSubject("BrightImpact Registration Confirmation");
+            message.setText("Hello " + username + ",\n\nYour registration in BrightImpact was successful.\n\nThank you!");
 
             Transport.send(message);
             System.out.println("✅ Confirmation email sent to " + receiverEmail);

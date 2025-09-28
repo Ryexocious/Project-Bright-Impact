@@ -37,7 +37,7 @@
                                 <TableColumn text="Type" fx:id="completedMedTypeCol" prefWidth="120"/>
                                 <TableColumn text="Amount" fx:id="completedMedAmountCol" prefWidth="100"/>
                                 <TableColumn text="Doses Taken" fx:id="completedMedDosesCol" prefWidth="120"/>
-                                <TableColumn text="Date Range" fx:id="completedMedDateRangeCol" prefWidth="180"/>
+                                <TableColumn text="Date Range" fx:id="completedMedDateRangeCol" prefWidth="220"/>
                             </columns>
                         </TableView>
                     </VBox>
@@ -58,7 +58,7 @@
                                 <TableColumn text="Type" fx:id="ongoingMedTypeCol" prefWidth="120"/>
                                 <TableColumn text="Amount" fx:id="ongoingMedAmountCol" prefWidth="100"/>
                                 <TableColumn text="Doses Taken" fx:id="ongoingMedDosesCol" prefWidth="120"/>
-                                <TableColumn text="Date Range" fx:id="ongoingMedDateRangeCol" prefWidth="180"/>
+                                <TableColumn text="Date Range" fx:id="ongoingMedDateRangeCol" prefWidth="220"/>
                             </columns>
                         </TableView>
                     </VBox>

@@ -32,17 +32,35 @@
     -fx-alignment: CENTER_LEFT;
 }
 
-/* Shared control base - increased height and padding; width set in FXML */
 .filter-field, .filter-combo, .filter-date-picker {
     -fx-pref-height: 44px;
     -fx-min-height: 40px;
     -fx-font-size: 14px;
+
+    /* Main look */
     -fx-background-color: white;
     -fx-background-radius: 8;
     -fx-border-radius: 8;
-    -fx-border-color: rgba(16,24,40,0.04);
+    -fx-border-color: rgba(16,24,40,0.2);
     -fx-padding: 0 12 0 12;
+
+    /* Shadow */
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.03), 6, 0, 0, 2);
+
+    /* Fix text */
+    -fx-text-fill: #101828;   /* dark gray text */
+}
+
+/* For ComboBox popup cells */
+.filter-combo .list-cell {
+    -fx-text-fill: #101828;
+    -fx-background-color: white;
+}
+
+/* For DatePicker editor text */
+.filter-date-picker .text-field {
+    -fx-text-fill: #101828;
+    -fx-background-color: white;
 }
 
 /* TextField specifics */

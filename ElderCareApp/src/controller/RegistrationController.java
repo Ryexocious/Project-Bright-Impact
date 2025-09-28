@@ -21,9 +21,13 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Pattern;
 import utils.SessionManager;
 
 public class RegistrationController {
+
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$", Pattern.CASE_INSENSITIVE);
 
     @FXML private TextField usernameField;
     @FXML private PasswordField passwordField;
@@ -68,9 +72,16 @@ public class RegistrationController {
         // For elder: generate pairing code
         final String pairingCode = "Elder".equals(role) ? utils.PairingCodeGenerator.generateCode() : pairingCodeInput;
 
+        // Basic required-field checks
         if (username.isEmpty() || password.isEmpty() || name.isEmpty() || role == null ||
                 (!"Elder".equals(role) && (email.isEmpty() || pairingCode.isEmpty()))) {
             messageLabel.setText("Please fill all required fields.");
+            return;
+        }
+
+        // Simple email format validation for caretakers
+        if (!"Elder".equals(role) && !isValidEmail(email)) {
+            messageLabel.setText("Please enter a valid email address.");
             return;
         }
 
@@ -93,7 +104,6 @@ public class RegistrationController {
 
                 if ("Elder".equals(role)) {
                     // Create elder record
-                	
                     Map<String, Object> elderData = new HashMap<>();
                     elderData.put("username", username);
                     elderData.put("password", password);
@@ -110,7 +120,7 @@ public class RegistrationController {
 
                     Platform.runLater(() -> {
                         messageLabel.setText("Elder registered. Share pairing code: " + pairingCode);
-                        goToPostRegistration(role, pairingCode,username,elderRef.getId());
+                        goToPostRegistration(role, pairingCode, username, elderRef.getId());
                     });
 
                 } else {
@@ -147,7 +157,7 @@ public class RegistrationController {
 
                     Platform.runLater(() -> {
                         messageLabel.setText("Caretaker registered and linked to elder.");
-                        goToPostRegistration(role, elderDoc.getString("name"),username,caretakerRef.getId()); // Show linked elder name
+                        goToPostRegistration(role, elderDoc.getString("name"), username, caretakerRef.getId()); // Show linked elder name
                     });
                 }
 
@@ -158,13 +168,17 @@ public class RegistrationController {
         }).start();
     }
 
-    private void goToPostRegistration(String role, String data,String username, String userID) {
+    private boolean isValidEmail(String email) {
+        return EMAIL_PATTERN.matcher(email).matches();
+    }
+
+    private void goToPostRegistration(String role, String data, String username, String userID) {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/post_registration.fxml"));
             Parent root = loader.load();
 
             PostRegistrationController controller = loader.getController();
-            controller.initializeView(role, data,username,userID);
+            controller.initializeView(role, data, username, userID);
 
             Stage stage = (Stage) registerButton.getScene().getWindow();
             Scene scene = new Scene(root);
